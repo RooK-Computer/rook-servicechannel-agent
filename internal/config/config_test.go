@@ -92,6 +92,24 @@ func TestLoadMapsPrintConfigToConfigCommand(t *testing.T) {
 	}
 }
 
+func TestLoadMapsInteractiveFlagToInteractiveCommand(t *testing.T) {
+	cfg, err := Load([]string{"--interactive"}, []string{"ROOK_AGENT_STATE_PATH=/tmp/state.json"})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Command != InteractiveCommand {
+		t.Fatalf("Command = %q, want %q", cfg.Command, InteractiveCommand)
+	}
+}
+
+func TestLoadRejectsInteractiveWithExplicitCommand(t *testing.T) {
+	_, err := Load([]string{"status", "--interactive"}, []string{"ROOK_AGENT_STATE_PATH=/tmp/state.json"})
+	if err == nil {
+		t.Fatal("Load returned nil error for conflicting interactive command")
+	}
+}
+
 func TestLoadRejectsUnknownCommand(t *testing.T) {
 	_, err := Load([]string{"unknown"}, []string{"ROOK_AGENT_STATE_PATH=/tmp/state.json"})
 	if err == nil {

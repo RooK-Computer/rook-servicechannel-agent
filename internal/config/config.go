@@ -19,6 +19,7 @@ type Config struct {
 	ConsoleID   string
 	LogLevel    string
 	PrintConfig bool
+	Interactive bool
 	StatePath   string
 	SessionPIN  string
 	Command     Command
@@ -27,13 +28,14 @@ type Config struct {
 type Command string
 
 const (
-	RunCommand    Command = "run"
-	ConfigCommand Command = "config"
-	StartCommand  Command = "start"
-	StatusCommand Command = "status"
-	PinCommand    Command = "pin"
-	PingCommand   Command = "ping"
-	StopCommand   Command = "stop"
+	RunCommand         Command = "run"
+	InteractiveCommand Command = "interactive"
+	ConfigCommand      Command = "config"
+	StartCommand       Command = "start"
+	StatusCommand      Command = "status"
+	PinCommand         Command = "pin"
+	PingCommand        Command = "ping"
+	StopCommand        Command = "stop"
 )
 
 func Load(args []string, env []string) (Config, error) {
@@ -55,6 +57,7 @@ func Load(args []string, env []string) (Config, error) {
 	fs.StringVar(&cfg.StatePath, "state-path", envOrDefault(envMap, "ROOK_AGENT_STATE_PATH", defaultStatePath()), "Path to the local session state file")
 	fs.StringVar(&cfg.SessionPIN, "pin", envOrDefault(envMap, "ROOK_AGENT_PIN", ""), "Override the active session PIN for session-scoped commands")
 	fs.BoolVar(&cfg.PrintConfig, "print-config", false, "Print the effective configuration and exit")
+	fs.BoolVar(&cfg.Interactive, "interactive", false, "Run the agent in interactive prompt mode")
 
 	if err := fs.Parse(commandArgs); err != nil {
 		return Config{}, err
@@ -62,6 +65,13 @@ func Load(args []string, env []string) (Config, error) {
 
 	if cfg.PrintConfig && cfg.Command == RunCommand {
 		cfg.Command = ConfigCommand
+	}
+
+	if cfg.Interactive {
+		if cfg.Command != RunCommand && cfg.Command != InteractiveCommand {
+			return Config{}, errors.New("interactive mode cannot be combined with another explicit command")
+		}
+		cfg.Command = InteractiveCommand
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -99,7 +109,7 @@ func (c Config) Summary() string {
 		consoleID = "<unset>"
 	}
 
-	return fmt.Sprintf("backend_url=%s console_id=%s log_level=%s", c.BackendURL, consoleID, c.LogLevel)
+	return fmt.Sprintf("backend_url=%s console_id=%s log_level=%s state_path=%s command=%s", c.BackendURL, consoleID, c.LogLevel, c.StatePath, c.Command)
 }
 
 func environmentMap(env []string) map[string]string {
@@ -127,7 +137,7 @@ func parseCommand(args []string) (Command, []string, error) {
 	}
 
 	switch Command(args[0]) {
-	case ConfigCommand, StartCommand, StatusCommand, PinCommand, PingCommand, StopCommand:
+	case InteractiveCommand, ConfigCommand, StartCommand, StatusCommand, PinCommand, PingCommand, StopCommand:
 		return Command(args[0]), args[1:], nil
 	default:
 		return "", nil, fmt.Errorf("unknown command %q", args[0])

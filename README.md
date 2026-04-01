@@ -54,6 +54,7 @@ Current development commands:
 - `make run`
 - `make tidy`
 - `go test ./...`
+- `go run ./cmd/rook-agent --interactive --backend-url https://backend.example.test`
 - `go run ./cmd/rook-agent config`
 - `go run ./cmd/rook-agent start --backend-url https://backend.example.test`
 - `go run ./cmd/rook-agent status --backend-url https://backend.example.test`
@@ -83,7 +84,22 @@ Flags override environment variables.
 
 The current CLI MVP is session-centric and talks directly to the backend REST API.
 
-Available commands:
+Primary mode:
+
+- `--interactive` opens a dedicated prompt-driven agent shell
+
+Available commands inside the prompt:
+
+- `help` - show supported commands
+- `config` - print the effective configuration
+- `start` - begin a support session and start automatic heartbeats
+- `status` - query the current backend session status
+- `pin` - print the active session PIN
+- `ping` - send an extra manual heartbeat immediately
+- `stop` - end the active session and stop the heartbeat loop
+- `exit` - leave the interactive shell
+
+Direct subcommands remain available as a secondary interface:
 
 - `config` - print the effective configuration
 - `start` - begin a support session and persist the active session locally
@@ -94,18 +110,22 @@ Available commands:
 
 If `--pin` is not provided, `status`, `pin`, `ping`, and `stop` use the locally persisted session state file.
 
+In interactive mode, `start` also starts an automatic heartbeat loop that keeps the backend session alive until `stop`, `exit`, or a fatal backend heartbeat error occurs.
+
 ## Manual MVP Integration Flow
 
-1. Start the agent session:
-   - `go run ./cmd/rook-agent start --backend-url https://backend.example.test`
-2. Read the assigned PIN:
-   - `go run ./cmd/rook-agent pin`
-3. Inspect session status:
-   - `go run ./cmd/rook-agent status --backend-url https://backend.example.test`
-4. Send a heartbeat:
-   - `go run ./cmd/rook-agent ping --backend-url https://backend.example.test`
-5. End the session:
-   - `go run ./cmd/rook-agent stop --backend-url https://backend.example.test`
+1. Start the interactive agent:
+   - `go run ./cmd/rook-agent --interactive --backend-url https://backend.example.test`
+2. Inside the prompt, start the session:
+   - `start`
+3. Read the assigned PIN:
+   - `pin`
+4. Inspect current session state while the automatic heartbeat is running:
+   - `status`
+5. End the session cleanly:
+   - `stop`
+6. Leave the prompt:
+   - `exit`
 
 This MVP intentionally focuses on the backend session lifecycle only. WLAN, VPN runtime control, and local UI IPC remain future phases.
 

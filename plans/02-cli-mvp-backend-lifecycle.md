@@ -20,7 +20,7 @@ Those remain part of the long-term architecture, but they are deferred so the ag
 
 ## Recommended Shape
 
-Implement the first slice as an operator-driven CLI with a small interactive command loop and reusable subcommands. The exact UX can evolve, but it should let developers and testers:
+Implement the first slice as an operator-driven CLI with a prompt-driven interactive mode and reusable direct subcommands. The exact UX can evolve, but it should let developers and testers:
 
 - load agent configuration,
 - identify the console,
@@ -33,6 +33,13 @@ Implement the first slice as an operator-driven CLI with a small interactive com
 
 The CLI must use the configured backend API endpoint rather than assuming a fixed server URL.
 
+The intended primary UX is:
+
+- start the agent in an explicit interactive mode such as `--interactive`,
+- open a dedicated prompt,
+- trigger lifecycle commands from that prompt,
+- automatically keep the backend session alive after `start`.
+
 ## Workstreams
 
 | Workstream | Description | Status |
@@ -42,10 +49,12 @@ The CLI must use the configured backend API endpoint rather than assuming a fixe
 | Session start | Implement the session creation flow | Done |
 | Session status | Implement status retrieval and local rendering | Done |
 | PIN handling | Display the current PIN and validity metadata | Done |
-| Heartbeats | Support manual and optional timed heartbeat sending | Done (manual) |
+| Heartbeats | Support manual and optional timed heartbeat sending | Done |
 | Session stop | Implement clean session termination | Done |
 | Local state file | Persist the active session reference for continuity between commands | Done |
 | Error UX | Make backend failures explicit and operator-readable | Done |
+| Interactive prompt | Provide a prompt-driven operator mode | Done |
+| Automatic heartbeat loop | Keep the active session alive after `start` | Done |
 
 ## Execution Order
 
@@ -53,7 +62,8 @@ The CLI must use the configured backend API endpoint rather than assuming a fixe
 2. Backend client implementation
 3. CLI command structure and operator UX
 4. Local session persistence
-5. Tests, docs, and review preparation
+5. Interactive prompt and automatic heartbeat loop
+6. Tests, docs, and review preparation
 
 ## Detailed Implementation Slices
 
@@ -86,13 +96,21 @@ The CLI must use the configured backend API endpoint rather than assuming a fixe
   - heartbeat trigger,
   - session stop
 
-### Slice 4 - Local persistence
+### Slice 4 - Interactive prompt runtime
+
+- add an explicit interactive mode such as `--interactive`
+- open a dedicated prompt with the supported lifecycle commands
+- keep prompt handling separate from backend transport details
+- allow the operator to inspect current session state from the prompt
+
+### Slice 5 - Local persistence and heartbeat loop
 
 - persist the active session reference locally
-- allow follow-up commands to reuse the session context
-- handle stale or missing state explicitly instead of silently recovering
+- start an automatic heartbeat loop after `start`
+- stop the heartbeat loop cleanly on `stop`, exit, or fatal session error
+- make heartbeat failures visible instead of silently swallowing them
 
-### Slice 5 - Validation and docs
+### Slice 6 - Validation and docs
 
 - add tests for success and failure flows
 - use a fake or mock backend path where direct backend integration is not available
@@ -107,8 +125,10 @@ The CLI must use the configured backend API endpoint rather than assuming a fixe
 ## Deliverables
 
 - interactive CLI MVP,
+- prompt-driven interactive mode,
 - backend client abstraction,
 - local session persistence,
+- automatic heartbeat behavior after session start,
 - test coverage for success and failure flows,
 - documentation for manual integration testing.
 
@@ -118,18 +138,19 @@ Implemented artifacts:
 
 - backend contract DTOs and operation constants in `internal/backend/contract.go`,
 - HTTP backend client in `internal/backend/client.go`,
-- CLI command handling for `config`, `start`, `status`, `pin`, `ping`, and `stop`,
+- interactive prompt mode plus direct CLI command handling for `config`, `start`, `status`, `pin`, `ping`, and `stop`,
 - local session state persistence in `internal/sessionstate`,
+- automatic heartbeat loop started from the interactive `start` command,
 - tests for contract validation, HTTP client behavior, session persistence, and CLI lifecycle flows,
 - README usage and manual integration instructions.
 
-Implementation choices made for the MVP:
+Implementation choices retained for the MVP:
 
 - the backend contract follows `spec/openapi/02-agent-backend-rest.openapi.yaml`,
 - `beginsession` uses an empty request body,
 - no separate backend PIN endpoint is used; the PIN is taken from the start and status responses,
 - session-scoped CLI commands default to the locally persisted state file unless `--pin` is provided,
-- the MVP supports manual heartbeats but not an automated heartbeat loop yet.
+- direct subcommands may remain available even after the interactive prompt is added.
 
 ## Dependencies in Practice
 
@@ -149,6 +170,7 @@ Validation completed with:
 
 - `make fmt`
 - `make test`
+- interactive prompt smoke test (`help`, `exit`)
 
 ## Related Spec Work
 
@@ -164,7 +186,7 @@ Do not hardwire backend payload handling directly into the command layer. Put ba
 
 ## Review Gate
 
-When this plan is implemented, stop after the CLI MVP and its validation are complete. Do not continue into runtime-core work before the user has reviewed the phase.
+When this plan is implemented, stop after the prompt-driven CLI MVP and its validation are complete. Do not continue into runtime-core work before the user has reviewed the phase.
 
 ## Handoff Notes for Execution
 

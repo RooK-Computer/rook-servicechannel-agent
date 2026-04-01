@@ -3,11 +3,14 @@ package app
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,7 +23,7 @@ func TestRunWaitsForShutdown(t *testing.T) {
 		BackendURL: "https://backend.example.test",
 		LogLevel:   "info",
 		StatePath:  filepath.Join(t.TempDir(), "session.json"),
-	}, logger, &bytes.Buffer{})
+	}, logger, strings.NewReader(""), &bytes.Buffer{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -57,7 +60,7 @@ func TestRunPrintConfigReturnsImmediately(t *testing.T) {
 		StatePath:   filepath.Join(t.TempDir(), "session.json"),
 		Command:     config.ConfigCommand,
 		PrintConfig: true,
-	}, logger, &output)
+	}, logger, strings.NewReader(""), &output)
 
 	if err := application.Run(context.Background()); err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -101,7 +104,7 @@ func TestRunStartStatusPinPingStopFlow(t *testing.T) {
 			LogLevel:   "info",
 			StatePath:  statePath,
 			Command:    command,
-		}, logger, &output)
+		}, logger, strings.NewReader(""), &output)
 
 		if err := application.Run(context.Background()); err != nil {
 			t.Fatalf("Run(%s) returned error: %v", command, err)
@@ -148,7 +151,7 @@ func TestRunStatusRequiresStateOrPIN(t *testing.T) {
 		LogLevel:   "info",
 		StatePath:  filepath.Join(t.TempDir(), "session.json"),
 		Command:    config.StatusCommand,
-	}, logger, &bytes.Buffer{})
+	}, logger, strings.NewReader(""), &bytes.Buffer{})
 
 	err := application.Run(context.Background())
 	if err == nil {
@@ -157,5 +160,71 @@ func TestRunStatusRequiresStateOrPIN(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "no active session state found") {
 		t.Fatalf("error = %v, want missing state message", err)
+	}
+}
+
+func TestRunInteractiveModeStartsAutomaticHeartbeat(t *testing.T) {
+	var (
+		mu        sync.Mutex
+		pingCount int
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/api/console/1/beginsession":
+			_, _ = w.Write([]byte(`{"session":{"status":"open","pin":"1234","ipAddress":"10.8.0.2"}}`))
+		case "/api/console/1/status":
+			_, _ = w.Write([]byte(`{"session":{"status":"active","pin":"1234","ipAddress":"10.8.0.2"}}`))
+		case "/api/console/1/ping":
+			mu.Lock()
+			pingCount++
+			mu.Unlock()
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/console/1/endsession":
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	inputReader, inputWriter := io.Pipe()
+	defer inputReader.Close()
+
+	go func() {
+		defer inputWriter.Close()
+		fmt.Fprintln(inputWriter, "start")
+		time.Sleep(80 * time.Millisecond)
+		fmt.Fprintln(inputWriter, "status")
+		fmt.Fprintln(inputWriter, "stop")
+		fmt.Fprintln(inputWriter, "exit")
+	}()
+
+	var output bytes.Buffer
+	logger := slog.New(slog.DiscardHandler)
+	application := New(config.Config{
+		BackendURL: server.URL,
+		LogLevel:   "info",
+		StatePath:  filepath.Join(t.TempDir(), "session.json"),
+		Command:    config.InteractiveCommand,
+	}, logger, inputReader, &output)
+	application.heartbeatInterval = 20 * time.Millisecond
+
+	if err := application.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	mu.Lock()
+	gotPings := pingCount
+	mu.Unlock()
+
+	if gotPings == 0 {
+		t.Fatal("automatic heartbeat did not send any ping")
+	}
+
+	if !strings.Contains(output.String(), "automatic heartbeat started") {
+		t.Fatalf("output = %q, want heartbeat start message", output.String())
 	}
 }

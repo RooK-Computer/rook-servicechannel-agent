@@ -24,7 +24,7 @@ func main() {
 	}
 
 	logger := logging.New(cfg.LogLevel)
-	application := app.New(cfg, logger, os.Stdout)
+	application := app.New(cfg, logger, os.Stdin, os.Stdout)
 
 	if err := application.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "run app: %v\n", err)
