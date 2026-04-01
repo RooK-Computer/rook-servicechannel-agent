@@ -32,8 +32,8 @@ This means the repository should be planned as an evolution path:
 
 | Plan | Scope | Status |
 | --- | --- | --- |
-| `01-foundation-and-bootstrap.md` | Repository bootstrap and engineering baseline | Revalidated, review pending |
-| `02-cli-mvp-backend-lifecycle.md` | Interactive CLI MVP for backend session flow | Blocked by Plan 01 review |
+| `01-foundation-and-bootstrap.md` | Repository bootstrap and engineering baseline | Approved |
+| `02-cli-mvp-backend-lifecycle.md` | Interactive CLI MVP for backend session flow | Implemented, review pending |
 | `03-runtime-core-and-service-mode.md` | State model, background runtime, daemon evolution | Planned |
 | `04-local-ipc-and-ui-contract.md` | Unix socket IPC and later console UI integration | Planned |
 | `05-network-and-vpn-integration.md` | WLAN, OpenVPN, cleanup, reboot recovery | Planned |

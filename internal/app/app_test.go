@@ -1,8 +1,13 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +19,8 @@ func TestRunWaitsForShutdown(t *testing.T) {
 	application := New(config.Config{
 		BackendURL: "https://backend.example.test",
 		LogLevel:   "info",
-	}, logger)
+		StatePath:  filepath.Join(t.TempDir(), "session.json"),
+	}, logger, &bytes.Buffer{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -44,13 +50,112 @@ func TestRunWaitsForShutdown(t *testing.T) {
 
 func TestRunPrintConfigReturnsImmediately(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
+	var output bytes.Buffer
 	application := New(config.Config{
 		BackendURL:  "https://backend.example.test",
 		LogLevel:    "info",
+		StatePath:   filepath.Join(t.TempDir(), "session.json"),
+		Command:     config.ConfigCommand,
 		PrintConfig: true,
-	}, logger)
+	}, logger, &output)
 
 	if err := application.Run(context.Background()); err != nil {
 		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !strings.Contains(output.String(), "backend_url=https://backend.example.test") {
+		t.Fatalf("output = %q, want backend summary", output.String())
+	}
+}
+
+func TestRunStartStatusPinPingStopFlow(t *testing.T) {
+	serverState := "open"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/api/console/1/beginsession":
+			_, _ = w.Write([]byte(`{"session":{"status":"open","pin":"1234","ipAddress":"10.8.0.2"}}`))
+		case "/api/console/1/status":
+			_, _ = w.Write([]byte(`{"session":{"status":"` + serverState + `","pin":"1234","ipAddress":"10.8.0.2"}}`))
+		case "/api/console/1/ping":
+			serverState = "active"
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/console/1/endsession":
+			serverState = "closed"
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	statePath := filepath.Join(t.TempDir(), "session.json")
+	logger := slog.New(slog.DiscardHandler)
+
+	runCommand := func(command config.Command) string {
+		t.Helper()
+		var output bytes.Buffer
+		application := New(config.Config{
+			BackendURL: server.URL,
+			LogLevel:   "info",
+			StatePath:  statePath,
+			Command:    command,
+		}, logger, &output)
+
+		if err := application.Run(context.Background()); err != nil {
+			t.Fatalf("Run(%s) returned error: %v", command, err)
+		}
+
+		return output.String()
+	}
+
+	startOutput := runCommand(config.StartCommand)
+	if !strings.Contains(startOutput, "pin=1234") {
+		t.Fatalf("start output = %q, want pin", startOutput)
+	}
+
+	pinOutput := runCommand(config.PinCommand)
+	if strings.TrimSpace(pinOutput) != "1234" {
+		t.Fatalf("pin output = %q, want 1234", pinOutput)
+	}
+
+	statusOutput := runCommand(config.StatusCommand)
+	if !strings.Contains(statusOutput, "status=open") {
+		t.Fatalf("status output = %q, want open", statusOutput)
+	}
+
+	pingOutput := runCommand(config.PingCommand)
+	if strings.TrimSpace(pingOutput) != "heartbeat sent" {
+		t.Fatalf("ping output = %q, want heartbeat sent", pingOutput)
+	}
+
+	statusOutput = runCommand(config.StatusCommand)
+	if !strings.Contains(statusOutput, "status=active") {
+		t.Fatalf("status output = %q, want active", statusOutput)
+	}
+
+	stopOutput := runCommand(config.StopCommand)
+	if strings.TrimSpace(stopOutput) != "session ended" {
+		t.Fatalf("stop output = %q, want session ended", stopOutput)
+	}
+}
+
+func TestRunStatusRequiresStateOrPIN(t *testing.T) {
+	logger := slog.New(slog.DiscardHandler)
+	application := New(config.Config{
+		BackendURL: "https://backend.example.test",
+		LogLevel:   "info",
+		StatePath:  filepath.Join(t.TempDir(), "session.json"),
+		Command:    config.StatusCommand,
+	}, logger, &bytes.Buffer{})
+
+	err := application.Run(context.Background())
+	if err == nil {
+		t.Fatal("Run returned nil error, want missing state error")
+	}
+
+	if !strings.Contains(err.Error(), "no active session state found") {
+		t.Fatalf("error = %v, want missing state message", err)
 	}
 }

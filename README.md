@@ -4,7 +4,7 @@ This repository hosts the RooK console agent implementation.
 
 ## Current State
 
-The repository is currently in planning/bootstrap mode. The shared system architecture and implementation status are maintained in the `spec/` submodule, while repository-local execution plans live in `plans/`.
+The repository now contains the first backend-facing CLI MVP for the RooK console agent. The shared system architecture and implementation status are maintained in the `spec/` submodule, while repository-local execution plans live in `plans/`.
 
 ## Current Delivery Strategy
 
@@ -46,7 +46,7 @@ The first MVP is intentionally smaller:
 
 ## Local Development
 
-Bootstrap validation currently uses only the Go toolchain:
+Current development commands:
 
 - `make build`
 - `make test`
@@ -54,8 +54,12 @@ Bootstrap validation currently uses only the Go toolchain:
 - `make run`
 - `make tidy`
 - `go test ./...`
-- `go run ./cmd/rook-agent --print-config`
-- `go run ./cmd/rook-agent --backend-url https://backend.example.test --console-id console-01`
+- `go run ./cmd/rook-agent config`
+- `go run ./cmd/rook-agent start --backend-url https://backend.example.test`
+- `go run ./cmd/rook-agent status --backend-url https://backend.example.test`
+- `go run ./cmd/rook-agent pin`
+- `go run ./cmd/rook-agent ping --backend-url https://backend.example.test`
+- `go run ./cmd/rook-agent stop --backend-url https://backend.example.test`
 
 ## Configuration
 
@@ -70,8 +74,40 @@ Additional bootstrap configuration:
 
 - flag / environment: `--console-id` / `ROOK_AGENT_CONSOLE_ID`
 - flag / environment: `--log-level` / `ROOK_AGENT_LOG_LEVEL`
+- flag / environment: `--state-path` / `ROOK_AGENT_STATE_PATH`
+- flag / environment: `--pin` / `ROOK_AGENT_PIN`
 
 Flags override environment variables.
+
+## CLI MVP Commands
+
+The current CLI MVP is session-centric and talks directly to the backend REST API.
+
+Available commands:
+
+- `config` - print the effective configuration
+- `start` - begin a support session and persist the active session locally
+- `status` - query the current backend session status
+- `pin` - print the active session PIN from local state or `--pin`
+- `ping` - send a manual heartbeat
+- `stop` - end the active session and clear local state
+
+If `--pin` is not provided, `status`, `pin`, `ping`, and `stop` use the locally persisted session state file.
+
+## Manual MVP Integration Flow
+
+1. Start the agent session:
+   - `go run ./cmd/rook-agent start --backend-url https://backend.example.test`
+2. Read the assigned PIN:
+   - `go run ./cmd/rook-agent pin`
+3. Inspect session status:
+   - `go run ./cmd/rook-agent status --backend-url https://backend.example.test`
+4. Send a heartbeat:
+   - `go run ./cmd/rook-agent ping --backend-url https://backend.example.test`
+5. End the session:
+   - `go run ./cmd/rook-agent stop --backend-url https://backend.example.test`
+
+This MVP intentionally focuses on the backend session lifecycle only. WLAN, VPN runtime control, and local UI IPC remain future phases.
 
 ## Notes
 

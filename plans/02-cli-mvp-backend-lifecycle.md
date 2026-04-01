@@ -1,6 +1,6 @@
 # Plan 02 - CLI MVP Backend Lifecycle
 
-Status: Blocked by Plan 01 review
+Status: Implemented, review pending
 
 ## Goal
 
@@ -37,15 +37,67 @@ The CLI must use the configured backend API endpoint rather than assuming a fixe
 
 | Workstream | Description | Status |
 | --- | --- | --- |
-| Backend contract alignment | Define request and response payloads needed for the MVP | Planned |
-| Console identity | Decide how the CLI identifies the console to the backend | Planned |
-| Session start | Implement the session creation flow | Planned |
-| Session status | Implement status retrieval and local rendering | Planned |
-| PIN handling | Display the current PIN and validity metadata | Planned |
-| Heartbeats | Support manual and optional timed heartbeat sending | Planned |
-| Session stop | Implement clean session termination | Planned |
-| Local state file | Persist the active session reference for continuity between commands | Planned |
-| Error UX | Make backend failures explicit and operator-readable | Planned |
+| Backend contract alignment | Define request and response payloads needed for the MVP | Done |
+| Console identity | Decide how the CLI identifies the console to the backend | Deferred by contract |
+| Session start | Implement the session creation flow | Done |
+| Session status | Implement status retrieval and local rendering | Done |
+| PIN handling | Display the current PIN and validity metadata | Done |
+| Heartbeats | Support manual and optional timed heartbeat sending | Done (manual) |
+| Session stop | Implement clean session termination | Done |
+| Local state file | Persist the active session reference for continuity between commands | Done |
+| Error UX | Make backend failures explicit and operator-readable | Done |
+
+## Execution Order
+
+1. Backend contract alignment
+2. Backend client implementation
+3. CLI command structure and operator UX
+4. Local session persistence
+5. Tests, docs, and review preparation
+
+## Detailed Implementation Slices
+
+### Slice 1 - Backend contract alignment
+
+- define internal request and response types for:
+  - session start,
+  - session status,
+  - heartbeat,
+  - PIN retrieval,
+  - session stop
+- identify any open contract assumptions in the shared spec
+- document the assumptions close to the implementation work
+
+### Slice 2 - Backend client
+
+- add a backend client package under the reserved backend boundary
+- implement HTTP transport and response decoding
+- keep error handling explicit and operator-readable
+- ensure all requests use the configured backend base URL
+
+### Slice 3 - CLI surface
+
+- choose a command layout that supports both direct invocation and operator-driven usage
+- support at minimum:
+  - status/config inspection,
+  - session start,
+  - session status,
+  - PIN display,
+  - heartbeat trigger,
+  - session stop
+
+### Slice 4 - Local persistence
+
+- persist the active session reference locally
+- allow follow-up commands to reuse the session context
+- handle stale or missing state explicitly instead of silently recovering
+
+### Slice 5 - Validation and docs
+
+- add tests for success and failure flows
+- use a fake or mock backend path where direct backend integration is not available
+- update README and status documents
+- prepare the phase for the mandatory review stop
 
 ## Dependencies
 
@@ -60,6 +112,31 @@ The CLI must use the configured backend API endpoint rather than assuming a fixe
 - test coverage for success and failure flows,
 - documentation for manual integration testing.
 
+## Implementation Notes
+
+Implemented artifacts:
+
+- backend contract DTOs and operation constants in `internal/backend/contract.go`,
+- HTTP backend client in `internal/backend/client.go`,
+- CLI command handling for `config`, `start`, `status`, `pin`, `ping`, and `stop`,
+- local session state persistence in `internal/sessionstate`,
+- tests for contract validation, HTTP client behavior, session persistence, and CLI lifecycle flows,
+- README usage and manual integration instructions.
+
+Implementation choices made for the MVP:
+
+- the backend contract follows `spec/openapi/02-agent-backend-rest.openapi.yaml`,
+- `beginsession` uses an empty request body,
+- no separate backend PIN endpoint is used; the PIN is taken from the start and status responses,
+- session-scoped CLI commands default to the locally persisted state file unless `--pin` is provided,
+- the MVP supports manual heartbeats but not an automated heartbeat loop yet.
+
+## Dependencies in Practice
+
+- Plan 01 is approved.
+- The shared architecture defines the operations conceptually, but concrete payloads must still be derived during implementation.
+- If the backend repository is not yet concrete enough, a temporary fake backend contract may be required for tests.
+
 ## Verification
 
 - A tester can start a session from the CLI and observe the backend acknowledging it.
@@ -67,6 +144,11 @@ The CLI must use the configured backend API endpoint rather than assuming a fixe
 - A tester can send at least one heartbeat and end the session.
 - Failure cases such as invalid configuration or backend errors are visible in the terminal.
 - The same binary can target different backend environments through configuration alone.
+
+Validation completed with:
+
+- `make fmt`
+- `make test`
 
 ## Related Spec Work
 
@@ -83,3 +165,9 @@ Do not hardwire backend payload handling directly into the command layer. Put ba
 ## Review Gate
 
 When this plan is implemented, stop after the CLI MVP and its validation are complete. Do not continue into runtime-core work before the user has reviewed the phase.
+
+## Handoff Notes for Execution
+
+- Update `spec/implementation/02-rook-agent-status.md` as soon as Slice 1 starts.
+- Treat backend contract alignment as the only valid starting point for implementation.
+- Do not let persistence or CLI UX choices leak transport details into the domain-facing code.

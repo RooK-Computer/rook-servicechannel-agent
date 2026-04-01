@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -18,22 +19,49 @@ type Config struct {
 	ConsoleID   string
 	LogLevel    string
 	PrintConfig bool
+	StatePath   string
+	SessionPIN  string
+	Command     Command
 }
+
+type Command string
+
+const (
+	RunCommand    Command = "run"
+	ConfigCommand Command = "config"
+	StartCommand  Command = "start"
+	StatusCommand Command = "status"
+	PinCommand    Command = "pin"
+	PingCommand   Command = "ping"
+	StopCommand   Command = "stop"
+)
 
 func Load(args []string, env []string) (Config, error) {
 	envMap := environmentMap(env)
+	command, commandArgs, err := parseCommand(args)
+	if err != nil {
+		return Config{}, err
+	}
 
 	fs := flag.NewFlagSet("rook-agent", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
-	cfg := Config{}
+	cfg := Config{
+		Command: command,
+	}
 	fs.StringVar(&cfg.BackendURL, "backend-url", envOrDefault(envMap, "ROOK_AGENT_BACKEND_URL", defaultBackendURL), "Base URL for the RooK backend API")
 	fs.StringVar(&cfg.ConsoleID, "console-id", envOrDefault(envMap, "ROOK_AGENT_CONSOLE_ID", ""), "Stable console identity used for backend communication")
 	fs.StringVar(&cfg.LogLevel, "log-level", envOrDefault(envMap, "ROOK_AGENT_LOG_LEVEL", defaultLogLevel), "Log level (debug, info, warn, error)")
+	fs.StringVar(&cfg.StatePath, "state-path", envOrDefault(envMap, "ROOK_AGENT_STATE_PATH", defaultStatePath()), "Path to the local session state file")
+	fs.StringVar(&cfg.SessionPIN, "pin", envOrDefault(envMap, "ROOK_AGENT_PIN", ""), "Override the active session PIN for session-scoped commands")
 	fs.BoolVar(&cfg.PrintConfig, "print-config", false, "Print the effective configuration and exit")
 
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(commandArgs); err != nil {
 		return Config{}, err
+	}
+
+	if cfg.PrintConfig && cfg.Command == RunCommand {
+		cfg.Command = ConfigCommand
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -52,6 +80,10 @@ func (c Config) Validate() error {
 
 	if strings.TrimSpace(c.LogLevel) == "" {
 		errs = append(errs, errors.New("log level must not be empty"))
+	}
+
+	if strings.TrimSpace(c.StatePath) == "" {
+		errs = append(errs, errors.New("state path must not be empty"))
 	}
 
 	if len(errs) > 0 {
@@ -87,4 +119,26 @@ func envOrDefault(env map[string]string, key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func parseCommand(args []string) (Command, []string, error) {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return RunCommand, args, nil
+	}
+
+	switch Command(args[0]) {
+	case ConfigCommand, StartCommand, StatusCommand, PinCommand, PingCommand, StopCommand:
+		return Command(args[0]), args[1:], nil
+	default:
+		return "", nil, fmt.Errorf("unknown command %q", args[0])
+	}
+}
+
+func defaultStatePath() string {
+	configDir, err := os.UserConfigDir()
+	if err != nil || strings.TrimSpace(configDir) == "" {
+		return filepath.Join(".rook-agent", "session.json")
+	}
+
+	return filepath.Join(configDir, "rook-agent", "session.json")
 }
