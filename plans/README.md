@@ -49,6 +49,19 @@ When an agent starts implementation work, it should:
 4. update the status fields in the touched plan files,
 5. keep the CLI-first MVP boundary explicit until a later plan phase is started.
 
+## Review Gate Policy
+
+Every plan phase ends with a mandatory review stop.
+
+That means:
+
+1. complete the phase scope,
+2. update the relevant plan file and status documents,
+3. stop further implementation work,
+4. wait for user review before starting the next plan.
+
+This repository intentionally uses review checkpoints between plans so the user can inspect the result before work continues.
+
 ## Deferred Concept Work
 
 The shared architecture currently describes the agent primarily as a daemon with WLAN and VPN responsibilities. A follow-up spec update is required to document the CLI-first MVP as an intentional early delivery mode and to explain how it evolves into the full agent runtime.

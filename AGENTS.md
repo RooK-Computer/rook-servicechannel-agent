@@ -20,6 +20,8 @@ Before making changes, read:
 - The shared `spec/` submodule currently uses German and should stay consistent with its existing language.
 - Do not treat the current CLI-first MVP as a contradiction of the long-term daemon architecture. Treat it as the first delivery slice.
 - Keep the domain core reusable across CLI mode, future service mode, and future IPC handlers.
+- Treat a configurable backend API endpoint as a core requirement, not a convenience.
+- Keep Debian packaging in scope for the repository roadmap and implementation decisions.
 
 ## Mandatory Documentation Updates
 
@@ -49,3 +51,4 @@ Until a later phase explicitly starts, treat these topics as out of scope for th
 - Record deferred work explicitly instead of silently omitting it.
 - Prefer small, composable internal packages over monolithic command code.
 - Preserve a usable CLI surface even after service mode is introduced.
+- After completing any plan phase, stop and wait for user review before moving to the next phase.

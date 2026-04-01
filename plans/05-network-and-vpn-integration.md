@@ -47,6 +47,10 @@ Implement the deferred local system responsibilities so the repository reaches t
 - VPN state can be queried from actual local signals, not guessed.
 - Reboot or crash recovery does not leave RooK-owned temporary network artifacts behind.
 
+## Review Gate
+
+When this plan is implemented, stop after network and VPN validation and wait for user review before starting Plan 06.
+
 ## Handoff Notes
 
 The shared spec already references `rook-openvpn-client.service`, the `rookvpn` TUN interface, and `/var/log/rook-openvpn/client-status.log`. Reuse those paths instead of inventing alternatives unless the shared spec is updated first.

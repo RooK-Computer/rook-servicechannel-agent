@@ -42,6 +42,10 @@ Add the local control surface needed for a later console UI while keeping state 
 - A separate UI process can request current agent state and receive updates.
 - The UI does not need to implement its own support logic.
 
+## Review Gate
+
+When this plan is implemented, stop after IPC validation and wait for user review before starting Plan 05.
+
 ## Handoff Notes
 
 Keep request types aligned with the shared architecture, but revisit the command list once WLAN and VPN integration are implemented so the contract reflects real capabilities.

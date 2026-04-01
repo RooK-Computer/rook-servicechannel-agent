@@ -42,6 +42,10 @@ Evolve the CLI MVP into the long-lived agent core described in the shared archit
 - The CLI remains available as an operational surface instead of being thrown away.
 - Later IPC, WLAN, and VPN features plug into the same runtime core.
 
+## Review Gate
+
+When this plan is implemented, stop after runtime-core and service-mode validation and wait for user review before starting Plan 04.
+
 ## Handoff Notes
 
 Treat the CLI MVP as the first adapter around the runtime core, not as throwaway code. This keeps the repository aligned with both the MVP request and the long-term architecture.

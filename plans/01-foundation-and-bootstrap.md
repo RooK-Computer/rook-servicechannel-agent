@@ -16,6 +16,7 @@ The repository currently has no application code. Later phases need a stable pla
 - define the project layout,
 - choose the command entrypoint structure,
 - establish configuration loading,
+- make the backend API endpoint explicitly configurable from day one,
 - establish logging conventions,
 - create a lightweight testing baseline,
 - document local development commands in the root README.
@@ -26,7 +27,7 @@ The repository currently has no application code. Later phases need a stable pla
 | --- | --- | --- |
 | Module bootstrap | Initialize `go.mod`, dependency policy, and versioning approach | Planned |
 | Project layout | Create directories for `cmd/`, `internal/`, config, and tests | Planned |
-| Config baseline | Define how backend URL, console identity, and auth material are loaded | Planned |
+| Config baseline | Define how backend API base URL, console identity, and auth material are loaded and overridden | Planned |
 | Logging baseline | Pick structured logging and error-reporting conventions | Planned |
 | CLI shell skeleton | Create the initial command tree or interactive shell entrypoint | Planned |
 | Test baseline | Add unit test structure and one smoke test target | Planned |
@@ -49,7 +50,12 @@ The repository currently has no application code. Later phases need a stable pla
 
 - `go test ./...` passes for the bootstrap skeleton,
 - the repository has a clear place for CLI, runtime core, and adapters,
+- the backend API endpoint can be configured without code changes,
 - the next agent can begin backend work without making layout decisions first.
+
+## Review Gate
+
+When this plan is implemented, stop after bootstrap validation and hand the repository to the user for review before starting Plan 02.
 
 ## Handoff Notes
 

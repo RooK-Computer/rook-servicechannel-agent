@@ -31,6 +31,8 @@ Implement the first slice as an operator-driven CLI with a small interactive com
 - stop the session cleanly,
 - inspect last known local state for debugging.
 
+The CLI must use the configured backend API endpoint rather than assuming a fixed server URL.
+
 ## Workstreams
 
 | Workstream | Description | Status |
@@ -64,6 +66,7 @@ Implement the first slice as an operator-driven CLI with a small interactive com
 - A tester can retrieve the current PIN and session status.
 - A tester can send at least one heartbeat and end the session.
 - Failure cases such as invalid configuration or backend errors are visible in the terminal.
+- The same binary can target different backend environments through configuration alone.
 
 ## Related Spec Work
 
@@ -76,3 +79,7 @@ This phase should trigger a shared spec update that explains:
 ## Handoff Notes
 
 Do not hardwire backend payload handling directly into the command layer. Put backend communication behind an internal package so the same client can be reused by future service mode and IPC handlers.
+
+## Review Gate
+
+When this plan is implemented, stop after the CLI MVP and its validation are complete. Do not continue into runtime-core work before the user has reviewed the phase.
