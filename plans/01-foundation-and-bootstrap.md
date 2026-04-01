@@ -1,6 +1,6 @@
 # Plan 01 - Foundation and Bootstrap
 
-Status: Planned
+Status: Implemented, review pending
 
 ## Goal
 
@@ -25,13 +25,13 @@ The repository currently has no application code. Later phases need a stable pla
 
 | Workstream | Description | Status |
 | --- | --- | --- |
-| Module bootstrap | Initialize `go.mod`, dependency policy, and versioning approach | Planned |
-| Project layout | Create directories for `cmd/`, `internal/`, config, and tests | Planned |
-| Config baseline | Define how backend API base URL, console identity, and auth material are loaded and overridden | Planned |
-| Logging baseline | Pick structured logging and error-reporting conventions | Planned |
-| CLI shell skeleton | Create the initial command tree or interactive shell entrypoint | Planned |
-| Test baseline | Add unit test structure and one smoke test target | Planned |
-| Developer docs | Document setup and common commands | Planned |
+| Module bootstrap | Initialize `go.mod`, dependency policy, and versioning approach | Done |
+| Project layout | Create directories for `cmd/`, `internal/`, config, and tests | Done |
+| Config baseline | Define how backend API base URL, console identity, and auth material are loaded and overridden | Done |
+| Logging baseline | Pick structured logging and error-reporting conventions | Done |
+| CLI shell skeleton | Create the initial command tree or interactive shell entrypoint | Done |
+| Test baseline | Add unit test structure and one smoke test target | Done |
+| Developer docs | Document setup and common commands | Done |
 
 ## Dependencies
 
@@ -52,6 +52,25 @@ The repository currently has no application code. Later phases need a stable pla
 - the repository has a clear place for CLI, runtime core, and adapters,
 - the backend API endpoint can be configured without code changes,
 - the next agent can begin backend work without making layout decisions first.
+
+## Implementation Notes
+
+Implemented bootstrap artifacts:
+
+- `go.mod` initialized for the repository,
+- executable entrypoint in `cmd/rook-agent`,
+- `Makefile` for standard build, test, format, run, tidy, and clean workflows,
+- bootstrap app surface in `internal/app`,
+- config loading and validation in `internal/config`,
+- structured logging setup in `internal/logging`,
+- reserved package boundaries for `internal/backend` and `internal/runtime`,
+- tests for configuration precedence and application smoke execution,
+- README development and configuration guidance.
+
+Validation completed with:
+
+- `gofmt -w ...`
+- `go test ./...`
 
 ## Review Gate
 

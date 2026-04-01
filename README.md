@@ -22,6 +22,12 @@ The first MVP is intentionally smaller:
 - `spec/` - shared architecture and cross-component implementation documents
 - `plans/` - repository-local implementation plans and handoff material
 - `AGENTS.md` - instructions for future coding agents
+- `cmd/rook-agent` - bootstrap executable entrypoint
+- `internal/config` - configuration loading and validation
+- `internal/logging` - logging setup
+- `internal/app` - current application bootstrap surface
+- `internal/backend` - reserved backend adapter boundary
+- `internal/runtime` - reserved runtime core boundary
 
 ## Key Documents
 
@@ -37,6 +43,35 @@ The first MVP is intentionally smaller:
 3. Extract and harden the runtime core for service mode.
 4. Add local IPC for the future console UI.
 5. Integrate WLAN, OpenVPN, cleanup, and packaging.
+
+## Local Development
+
+Bootstrap validation currently uses only the Go toolchain:
+
+- `make build`
+- `make test`
+- `make fmt`
+- `make run`
+- `make tidy`
+- `go test ./...`
+- `go run ./cmd/rook-agent --print-config`
+- `go run ./cmd/rook-agent --backend-url https://backend.example.test --console-id console-01`
+
+## Configuration
+
+The backend API endpoint is configurable from the start.
+
+Supported inputs:
+
+- flag: `--backend-url`
+- environment: `ROOK_AGENT_BACKEND_URL`
+
+Additional bootstrap configuration:
+
+- flag / environment: `--console-id` / `ROOK_AGENT_CONSOLE_ID`
+- flag / environment: `--log-level` / `ROOK_AGENT_LOG_LEVEL`
+
+Flags override environment variables.
 
 ## Notes
 

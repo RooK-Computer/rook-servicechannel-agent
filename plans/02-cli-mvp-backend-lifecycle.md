@@ -1,6 +1,6 @@
 # Plan 02 - CLI MVP Backend Lifecycle
 
-Status: Planned
+Status: Blocked by Plan 01 review
 
 ## Goal
 
