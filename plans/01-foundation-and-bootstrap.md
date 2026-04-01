@@ -1,6 +1,6 @@
 # Plan 01 - Foundation and Bootstrap
 
-Status: Implemented, review pending
+Status: Revalidated, review pending
 
 ## Goal
 
@@ -71,6 +71,31 @@ Validation completed with:
 
 - `gofmt -w ...`
 - `go test ./...`
+- built binary verified to stay alive until interrupted and then exit cleanly
+
+## Review Findings
+
+The review found one blocking correctness issue:
+
+- `internal/app.Run` currently returns immediately because it uses a non-blocking `select` with a `default` case.
+- This means the bootstrap process does not stay alive until interrupted.
+- The current smoke test does not catch this because it uses `context.Background()` and therefore validates the wrong behavior.
+
+## Required Follow-up Before Plan 02
+
+- make the bootstrap process wait for shutdown instead of exiting immediately,
+- add a shutdown-aware test for the blocking behavior,
+- rerun validation,
+- review Plan 01 again before changing the status to complete.
+
+## Fix and Revalidation
+
+The blocking issue has been fixed:
+
+- `internal/app.Run` now waits on `ctx.Done()` and exits only after shutdown is requested,
+- the old smoke test was replaced by a shutdown-aware test plus an explicit `PrintConfig` fast-path test,
+- `gofmt -w ...` and `go test ./...` pass,
+- the built binary was verified to keep running until interrupted.
 
 ## Review Gate
 

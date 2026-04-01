@@ -31,13 +31,9 @@ func (a App) Run(ctx context.Context) error {
 		"mode", "bootstrap",
 	)
 
-	select {
-	case <-ctx.Done():
-		a.logger.Info("shutdown requested", "reason", ctx.Err())
-		return nil
-	default:
-		return nil
-	}
+	<-ctx.Done()
+	a.logger.Info("shutdown requested", "reason", ctx.Err())
+	return nil
 }
 
 func emptyAsUnset(value string) string {
