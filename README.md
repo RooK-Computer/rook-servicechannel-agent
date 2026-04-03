@@ -91,7 +91,7 @@ Flags override environment variables.
 
 ## Runtime and CLI Commands
 
-The current agent binary exposes both a service-style runtime path and a session-centric CLI surface against the backend REST API.
+The current agent binary exposes a service-style runtime path, an IPC-backed interactive console for that service, and a session-centric direct CLI surface against the backend REST API.
 
 Service-oriented execution:
 
@@ -104,25 +104,31 @@ Service mode also starts the local Unix domain socket IPC server for a later con
 
 Primary mode:
 
-- `--interactive` opens a dedicated prompt-driven agent shell
+- `--interactive` opens a prompt-driven IPC client for the running local service
+
+Interactive mode requirements:
+
+- the local service must already be running
+- the Unix socket at `ROOK_AGENT_SOCKET_PATH` must be reachable
+- if no service/socket is available, interactive mode exits with a clear error instead of silently falling back to local execution
 
 Available commands inside the prompt:
 
 - `help` - show supported commands
 - `config` - print the effective configuration
-- `start` - begin a support session and start automatic heartbeats
-- `status` - query the current backend session status
+- `start` - ask the running service to begin a support session
+- `status` - query the current support status from the running service
 - `pin` - print the active session PIN
-- `ping` - send an extra manual heartbeat immediately
-- `stop` - end the active session and stop the heartbeat loop
-- `scanwifi` - list visible WiFi SSIDs through `nmcli`
+- `ping` - ask the running service to send an extra manual heartbeat immediately
+- `stop` - ask the running service to end the active session
+- `scanwifi` - ask the running service to list visible WiFi SSIDs
 - `wifistatus` - report whether any WiFi connection is active and whether it is the RooK support WiFi profile
-- `connectwifi <ssid> <password>` - create and activate the temporary RooK support WiFi profile
-- `disconnectwifi` - remove the temporary RooK support WiFi profile
-- `vpnstatus` - print the effective OpenVPN status from local signals
-- `vpnstart` - start the OpenVPN client service
-- `vpnstop` - stop the OpenVPN client service
-- `cleanup` - remove temporary WiFi/VPN support artifacts
+- `connectwifi <ssid> <password>` - ask the running service to create and activate the temporary RooK support WiFi profile
+- `disconnectwifi` - ask the running service to remove the temporary RooK support WiFi profile
+- `vpnstatus` - print the effective OpenVPN status reported by the running service
+- `vpnstart` - ask the running service to start the OpenVPN client service
+- `vpnstop` - ask the running service to stop the OpenVPN client service
+- `cleanup` - ask the running service to remove temporary WiFi/VPN support artifacts
 - `exit` - leave the interactive shell
 
 Direct subcommands remain available as a secondary interface:
@@ -144,9 +150,9 @@ Direct subcommands remain available as a secondary interface:
 
 If `--pin` is not provided, `status`, `pin`, `ping`, and `stop` use the locally persisted session state file.
 
-In interactive mode, `start` also starts an automatic heartbeat loop that keeps the backend session alive until `stop`, `exit`, or a fatal backend heartbeat error occurs.
+In interactive mode, asynchronous service events such as `SupportStateChanged`, `PinAssigned`, WLAN state changes, VPN state changes, and service-side error events are shown in the prompt output.
 
-Both the interactive prompt and the direct session commands now reuse the shared runtime core in `internal/runtime`.
+The direct session commands still execute locally against backend/runtime boundaries. The interactive prompt now exercises the service path over the local IPC socket.
 
 ## Local IPC Contract
 
@@ -161,9 +167,14 @@ Defaults:
 Currently implemented request actions:
 
 - `GetStatus`
+- `Ping`
 - `ScanWifi`
 - `ConnectWifi`
 - `DisconnectWifi`
+- `VpnStatus`
+- `VpnStart`
+- `VpnStop`
+- `Cleanup`
 - `StartSupport`
 - `StopSupport`
 - `GetPin`
@@ -217,6 +228,8 @@ Typical packaged service flow:
 3. Adjust `/etc/default/rook-agent` for the target backend and console environment.
 4. Enable and start the service:
    - `sudo systemctl enable --now rook-agent.service`
+5. Optionally connect with the interactive service console:
+   - `rook-agent --interactive`
 
 ## Operations and Diagnostics
 
@@ -237,17 +250,19 @@ First-line operator checks:
 
 ## Manual MVP Integration Flow
 
-1. Start the interactive agent:
+1. Start the service:
+   - `go run ./cmd/rook-agent service --backend-url https://backend.example.test`
+2. Connect with the interactive service console:
    - `go run ./cmd/rook-agent --interactive --backend-url https://backend.example.test`
-2. Inside the prompt, start the session:
+3. Inside the prompt, start the session:
    - `start`
-3. Read the assigned PIN:
+4. Read the assigned PIN:
    - `pin`
-4. Inspect current session state while the automatic heartbeat is running:
+5. Inspect current session state while the service heartbeat is running:
    - `status`
-5. End the session cleanly:
+6. End the session cleanly:
    - `stop`
-6. Leave the prompt:
+7. Leave the prompt:
    - `exit`
 
 The current implementation now includes WLAN management, OpenVPN control/observation, cleanup handling, and a first installable Debian package path. Further release hardening remains a later follow-up.

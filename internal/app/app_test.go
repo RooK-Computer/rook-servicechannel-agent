@@ -236,7 +236,28 @@ func TestRunWiFiStatusReportsForeignAndSupportConnections(t *testing.T) {
 	}
 }
 
-func TestRunInteractiveModeStartsAutomaticHeartbeat(t *testing.T) {
+func TestRunInteractiveModeRequiresRunningService(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.DiscardHandler)
+	application := New(config.Config{
+		BackendURL: "https://backend.example.test",
+		LogLevel:   "info",
+		StatePath:  filepath.Join(t.TempDir(), "session.json"),
+		SocketPath: filepath.Join(t.TempDir(), "missing.sock"),
+		Command:    config.InteractiveCommand,
+	}, logger, strings.NewReader("exit\n"), &output)
+
+	err := application.Run(context.Background())
+	if err == nil {
+		t.Fatal("Run returned nil error, want missing service error")
+	}
+
+	if !strings.Contains(err.Error(), "interactive mode requires a running service") {
+		t.Fatalf("error = %v, want missing service guidance", err)
+	}
+}
+
+func TestRunInteractiveModeUsesRunningServiceIPC(t *testing.T) {
 	var (
 		mu        sync.Mutex
 		pingCount int
@@ -263,6 +284,31 @@ func TestRunInteractiveModeStartsAutomaticHeartbeat(t *testing.T) {
 	}))
 	defer server.Close()
 
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "agent.sock")
+	statePath := filepath.Join(tmpDir, "session.json")
+
+	service := New(config.Config{
+		BackendURL: server.URL,
+		LogLevel:   "info",
+		StatePath:  statePath,
+		SocketPath: socketPath,
+		Command:    config.ServiceCommand,
+	}, slog.New(slog.DiscardHandler), strings.NewReader(""), &bytes.Buffer{})
+	attachFakeNetwork(&service)
+	service.runtimeManager.SetHeartbeatInterval(20 * time.Millisecond)
+
+	serviceCtx, cancelService := context.WithCancel(context.Background())
+	defer cancelService()
+
+	serviceErrCh := make(chan error, 1)
+	go func() {
+		serviceErrCh <- service.Run(serviceCtx)
+	}()
+
+	conn := waitForSocket(t, socketPath)
+	_ = conn.Close()
+
 	inputReader, inputWriter := io.Pipe()
 	defer inputReader.Close()
 
@@ -270,6 +316,9 @@ func TestRunInteractiveModeStartsAutomaticHeartbeat(t *testing.T) {
 		defer inputWriter.Close()
 		fmt.Fprintln(inputWriter, "start")
 		time.Sleep(80 * time.Millisecond)
+		fmt.Fprintln(inputWriter, "wifistatus")
+		fmt.Fprintln(inputWriter, "vpnstatus")
+		fmt.Fprintln(inputWriter, "ping")
 		fmt.Fprintln(inputWriter, "status")
 		fmt.Fprintln(inputWriter, "stop")
 		fmt.Fprintln(inputWriter, "exit")
@@ -280,14 +329,23 @@ func TestRunInteractiveModeStartsAutomaticHeartbeat(t *testing.T) {
 	application := New(config.Config{
 		BackendURL: server.URL,
 		LogLevel:   "info",
-		StatePath:  filepath.Join(t.TempDir(), "session.json"),
+		StatePath:  statePath,
+		SocketPath: socketPath,
 		Command:    config.InteractiveCommand,
 	}, logger, inputReader, &output)
-	attachFakeNetwork(&application)
-	application.runtimeManager.SetHeartbeatInterval(20 * time.Millisecond)
 
 	if err := application.Run(context.Background()); err != nil {
 		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cancelService()
+	select {
+	case err := <-serviceErrCh:
+		if err != nil {
+			t.Fatalf("service Run returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("service did not stop after cancellation")
 	}
 
 	mu.Lock()
@@ -295,11 +353,27 @@ func TestRunInteractiveModeStartsAutomaticHeartbeat(t *testing.T) {
 	mu.Unlock()
 
 	if gotPings == 0 {
-		t.Fatal("automatic heartbeat did not send any ping")
+		t.Fatal("service heartbeat path did not send any ping")
 	}
 
-	if !strings.Contains(output.String(), "automatic heartbeat started") {
-		t.Fatalf("output = %q, want heartbeat start message", output.String())
+	if !strings.Contains(output.String(), "Connected to service") {
+		t.Fatalf("output = %q, want service connection message", output.String())
+	}
+
+	if !strings.Contains(output.String(), "event: pin_assigned=1234") {
+		t.Fatalf("output = %q, want pin assigned event", output.String())
+	}
+
+	if !strings.Contains(output.String(), "heartbeat sent") {
+		t.Fatalf("output = %q, want heartbeat command output", output.String())
+	}
+
+	if !strings.Contains(output.String(), "wifi_active=false") {
+		t.Fatalf("output = %q, want wifi status output", output.String())
+	}
+
+	if !strings.Contains(output.String(), "state=disconnected") {
+		t.Fatalf("output = %q, want vpn status output", output.String())
 	}
 }
 

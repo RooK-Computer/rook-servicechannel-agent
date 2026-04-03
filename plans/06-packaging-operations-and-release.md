@@ -48,7 +48,7 @@ Implemented artifacts:
 - `packaging/default/rook-agent` for packaged runtime environment defaults,
 - maintainer scripts under `packaging/scripts/`,
 - `make package` as the packaging entrypoint,
-- README updates for packaged installation, configuration, and diagnostics.
+- README updates for packaged installation, configuration, diagnostics, and service-backed interactive usage.
 
 Implementation choices in this phase:
 
@@ -56,7 +56,8 @@ Implementation choices in this phase:
 - the packaged service runs the already existing `rook-agent service` path instead of introducing a separate daemon binary,
 - packaged runtime paths are fixed to `/var/lib/rook-agent/session.json` and `/run/rook-agent/agent.sock`,
 - backend endpoint configuration remains environment-driven through `/etc/default/rook-agent`,
-- package installation reloads `systemd`, but service enable/start remains an explicit operator step.
+- package installation reloads `systemd`, but service enable/start remains an explicit operator step,
+- the interactive mode now acts as an IPC client for the running service and fails clearly if the packaged service/socket is unavailable.
 
 ## Verification
 
@@ -67,6 +68,7 @@ Validation completed with:
 - `make package`
 - `dpkg-deb -c build/packages/rook-agent_0.0.0-1~dev_amd64.deb`
 - `dpkg-deb -I build/packages/rook-agent_0.0.0-1~dev_amd64.deb`
+- interactive prompt tests against a running in-process service in `internal/app/app_test.go`
 
 The resulting state after this phase:
 

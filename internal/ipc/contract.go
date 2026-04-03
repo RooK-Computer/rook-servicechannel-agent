@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"rook-servicechannel-agent/internal/backend"
+	"rook-servicechannel-agent/internal/network"
 	agentruntime "rook-servicechannel-agent/internal/runtime"
 )
 
@@ -14,9 +15,14 @@ type Action string
 
 const (
 	GetStatusAction      Action = "GetStatus"
+	PingAction           Action = "Ping"
 	ScanWiFiAction       Action = "ScanWifi"
 	ConnectWiFiAction    Action = "ConnectWifi"
 	DisconnectWiFiAction Action = "DisconnectWifi"
+	VPNStatusAction      Action = "VpnStatus"
+	VPNStartAction       Action = "VpnStart"
+	VPNStopAction        Action = "VpnStop"
+	CleanupAction        Action = "Cleanup"
 	StartSupportAction   Action = "StartSupport"
 	StopSupportAction    Action = "StopSupport"
 	GetPinAction         Action = "GetPin"
@@ -48,7 +54,7 @@ func (r Request) Validate() error {
 	}
 
 	switch r.Action {
-	case GetStatusAction, ScanWiFiAction, ConnectWiFiAction, DisconnectWiFiAction, StartSupportAction, StopSupportAction, GetPinAction:
+	case GetStatusAction, PingAction, ScanWiFiAction, ConnectWiFiAction, DisconnectWiFiAction, VPNStatusAction, VPNStartAction, VPNStopAction, CleanupAction, StartSupportAction, StopSupportAction, GetPinAction:
 		return nil
 	default:
 		return fmt.Errorf("unsupported action %q", r.Action)
@@ -112,6 +118,24 @@ type WiFiScanPayload struct {
 
 type ConnectionStatePayload struct {
 	State string `json:"state"`
+}
+
+type VPNStatusPayload struct {
+	State             string `json:"state"`
+	ServiceActive     bool   `json:"serviceActive"`
+	InterfacePresent  bool   `json:"interfacePresent"`
+	IPAddress         string `json:"ipAddress,omitempty"`
+	StatusFilePresent bool   `json:"statusFilePresent"`
+}
+
+func NewVPNStatusPayload(status network.VPNStatus) VPNStatusPayload {
+	return VPNStatusPayload{
+		State:             string(status.State),
+		ServiceActive:     status.ServiceActive,
+		InterfacePresent:  status.InterfacePresent,
+		IPAddress:         status.IPAddress,
+		StatusFilePresent: status.StatusFilePresent,
+	}
 }
 
 func NewStatusPayload(snapshot agentruntime.Snapshot) StatusPayload {

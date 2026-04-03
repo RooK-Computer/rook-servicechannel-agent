@@ -134,11 +134,22 @@ func (s *Server) handleRequest(ctx context.Context, request Request) (Response, 
 		s.manager.SyncWiFiState(agentruntime.BinaryState(wifiStatus.State))
 		s.manager.SyncWiFiStatus(wifiStatus.AnyActive, wifiStatus.SupportActive, wifiStatus.ActiveConnectionName)
 
+		vpnStatus, err := s.vpn.Status(ctx)
+		if err != nil {
+			return errorResponse(request, "status_failed", err.Error()), nil
+		}
+		s.manager.SyncVPNState(agentruntime.BinaryState(vpnStatus.State))
+
 		snapshot, err := s.manager.Snapshot()
 		if err != nil {
 			return errorResponse(request, "status_failed", err.Error()), nil
 		}
 		return successResponse(request, NewStatusPayload(snapshot)), nil
+	case PingAction:
+		if err := s.manager.SendHeartbeat(ctx, ""); err != nil {
+			return errorResponse(request, "ping_failed", err.Error()), []Event{errorEvent(err)}
+		}
+		return successResponse(request, struct{}{}), nil
 	case ScanWiFiAction:
 		networksFound, err := s.wifi.Scan(ctx)
 		if err != nil {
@@ -175,6 +186,45 @@ func (s *Server) handleRequest(ctx context.Context, request Request) (Response, 
 		s.manager.SyncWiFiStatus(false, false, "")
 		return successResponse(request, ConnectionStatePayload{State: string(agentruntime.BinaryStateDisconnected)}), []Event{
 			{Type: messageTypeEvent, Event: WiFiConnectionStateChangedEvent, Payload: ConnectionStatePayload{State: string(agentruntime.BinaryStateDisconnected)}},
+		}
+	case VPNStatusAction:
+		status, err := s.vpn.Status(ctx)
+		if err != nil {
+			return errorResponse(request, "vpn_status_failed", err.Error()), []Event{errorEvent(err)}
+		}
+		s.manager.SyncVPNState(agentruntime.BinaryState(status.State))
+		return successResponse(request, NewVPNStatusPayload(status)), nil
+	case VPNStartAction:
+		if err := s.vpn.Start(ctx); err != nil {
+			return errorResponse(request, "vpn_start_failed", err.Error()), []Event{errorEvent(err)}
+		}
+		status, err := s.vpn.Status(ctx)
+		if err != nil {
+			return errorResponse(request, "vpn_status_failed", err.Error()), []Event{errorEvent(err)}
+		}
+		s.manager.SyncVPNState(agentruntime.BinaryState(status.State))
+		return successResponse(request, NewVPNStatusPayload(status)), []Event{
+			{Type: messageTypeEvent, Event: VPNStateChangedEvent, Payload: ConnectionStatePayload{State: string(status.State)}},
+		}
+	case VPNStopAction:
+		if err := s.vpn.Stop(ctx); err != nil {
+			return errorResponse(request, "vpn_stop_failed", err.Error()), []Event{errorEvent(err)}
+		}
+		s.manager.SyncVPNState(agentruntime.BinaryStateDisconnected)
+		return successResponse(request, ConnectionStatePayload{State: string(agentruntime.BinaryStateDisconnected)}), []Event{
+			{Type: messageTypeEvent, Event: VPNStateChangedEvent, Payload: ConnectionStatePayload{State: string(agentruntime.BinaryStateDisconnected)}},
+		}
+	case CleanupAction:
+		cleaner := network.NewCleaner(s.wifi, s.vpn)
+		if err := cleaner.Cleanup(ctx); err != nil {
+			return errorResponse(request, "cleanup_failed", err.Error()), []Event{errorEvent(err)}
+		}
+		s.manager.SyncWiFiState(agentruntime.BinaryStateDisconnected)
+		s.manager.SyncWiFiStatus(false, false, "")
+		s.manager.SyncVPNState(agentruntime.BinaryStateDisconnected)
+		return successResponse(request, struct{}{}), []Event{
+			{Type: messageTypeEvent, Event: WiFiConnectionStateChangedEvent, Payload: ConnectionStatePayload{State: string(agentruntime.BinaryStateDisconnected)}},
+			{Type: messageTypeEvent, Event: VPNStateChangedEvent, Payload: ConnectionStatePayload{State: string(agentruntime.BinaryStateDisconnected)}},
 		}
 	case StartSupportAction:
 		session, err := s.manager.BeginSession(ctx)

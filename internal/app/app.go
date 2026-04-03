@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -158,10 +159,17 @@ func (a *App) runService(ctx context.Context) error {
 }
 
 func (a *App) runInteractive(ctx context.Context) error {
-	fmt.Fprintln(a.stdout, "Entering interactive mode. Type 'help' for commands.")
+	client, err := ipc.DialClient(a.config.SocketPath)
+	if err != nil {
+		return fmt.Errorf("interactive mode requires a running service on %s: %w", a.config.SocketPath, err)
+	}
+	defer client.Close()
+
+	fmt.Fprintln(a.stdout, "Entering interactive mode. Connected to service. Type 'help' for commands.")
 
 	lines := make(chan string)
 	scanErrors := make(chan error, 1)
+	eventLines := make(chan string, 32)
 
 	go func() {
 		scanner := bufio.NewScanner(a.stdin)
@@ -174,20 +182,41 @@ func (a *App) runInteractive(ctx context.Context) error {
 		close(lines)
 	}()
 
+	go func() {
+		for event := range client.Events() {
+			line, err := formatInteractiveEvent(event)
+			if err != nil {
+				eventLines <- fmt.Sprintf("event decode error: %v", err)
+				continue
+			}
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			eventLines <- line
+		}
+		close(eventLines)
+	}()
+
 	for {
 		fmt.Fprint(a.stdout, "rook> ")
 
 		select {
 		case <-ctx.Done():
-			a.runtimeManager.StopHeartbeatLoop()
 			fmt.Fprintln(a.stdout, "\ninteractive mode stopped")
 			return nil
+		case err, ok := <-client.Errors():
+			if ok && err != nil {
+				return err
+			}
 		case err := <-scanErrors:
-			a.runtimeManager.StopHeartbeatLoop()
 			return err
+		case line, ok := <-eventLines:
+			if ok {
+				fmt.Fprintf(a.stdout, "\n%s\n", line)
+				continue
+			}
 		case line, ok := <-lines:
 			if !ok {
-				a.runtimeManager.StopHeartbeatLoop()
 				fmt.Fprintln(a.stdout, "\ninteractive mode ended")
 				return nil
 			}
@@ -197,7 +226,7 @@ func (a *App) runInteractive(ctx context.Context) error {
 				continue
 			}
 
-			if err := a.handleInteractiveCommand(ctx, command); err != nil {
+			if err := a.handleInteractiveIPCCommand(ctx, client, command); err != nil {
 				if errors.Is(err, io.EOF) {
 					return nil
 				}
@@ -207,7 +236,7 @@ func (a *App) runInteractive(ctx context.Context) error {
 	}
 }
 
-func (a *App) handleInteractiveCommand(ctx context.Context, command string) error {
+func (a *App) handleInteractiveIPCCommand(ctx context.Context, client *ipc.Client, command string) error {
 	fields := strings.Fields(command)
 	if len(fields) == 0 {
 		return nil
@@ -221,47 +250,96 @@ func (a *App) handleInteractiveCommand(ctx context.Context, command string) erro
 		fmt.Fprintln(a.stdout, a.config.Summary())
 		return nil
 	case "start":
-		session, err := a.runtimeManager.BeginSession(ctx)
-		if err != nil {
+		var payload ipc.StatusPayload
+		if err := client.Request(ctx, ipc.StartSupportAction, nil, &payload); err != nil {
 			return err
 		}
-		printSession(a.stdout, session)
-		a.runtimeManager.StartHeartbeatLoop(ctx, session.PIN)
+		printSupportStatus(a.stdout, payload)
 		return nil
 	case "status":
-		session, err := a.runtimeManager.GetSessionStatus(ctx, a.config.SessionPIN)
-		if err != nil {
+		var payload ipc.StatusPayload
+		if err := client.Request(ctx, ipc.GetStatusAction, nil, &payload); err != nil {
 			return err
 		}
-		printSession(a.stdout, session)
+		printSupportStatus(a.stdout, payload)
 		return nil
 	case "pin":
-		return a.printSessionPIN()
+		var payload ipc.PinPayload
+		if err := client.Request(ctx, ipc.GetPinAction, nil, &payload); err != nil {
+			return err
+		}
+		fmt.Fprintln(a.stdout, payload.PIN)
+		return nil
 	case "ping":
-		return a.sendHeartbeat(ctx)
+		if err := client.Request(ctx, ipc.PingAction, nil, nil); err != nil {
+			return err
+		}
+		fmt.Fprintln(a.stdout, "heartbeat sent")
+		return nil
 	case "stop":
-		return a.stopSession(ctx)
+		if err := client.Request(ctx, ipc.StopSupportAction, nil, nil); err != nil {
+			return err
+		}
+		fmt.Fprintln(a.stdout, "session ended")
+		return nil
 	case "scanwifi":
-		return a.scanWiFi(ctx)
+		var payload ipc.WiFiScanPayload
+		if err := client.Request(ctx, ipc.ScanWiFiAction, nil, &payload); err != nil {
+			return err
+		}
+		for _, network := range payload.Networks {
+			fmt.Fprintln(a.stdout, network.SSID)
+		}
+		return nil
 	case "wifistatus":
-		return a.printWiFiStatus(ctx)
+		var payload ipc.StatusPayload
+		if err := client.Request(ctx, ipc.GetStatusAction, nil, &payload); err != nil {
+			return err
+		}
+		printWiFiStatusPayload(a.stdout, payload)
+		return nil
 	case "connectwifi":
 		if len(fields) < 3 {
 			return errors.New("connectwifi requires <ssid> <password>")
 		}
-		return a.connectWiFi(ctx, fields[1], strings.Join(fields[2:], " "))
+		if err := client.Request(ctx, ipc.ConnectWiFiAction, ipc.ConnectWiFiPayload{SSID: fields[1], Password: strings.Join(fields[2:], " ")}, nil); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.stdout, "wifi connected: %s\n", fields[1])
+		return nil
 	case "disconnectwifi":
-		return a.disconnectWiFi(ctx)
+		if err := client.Request(ctx, ipc.DisconnectWiFiAction, nil, nil); err != nil {
+			return err
+		}
+		fmt.Fprintln(a.stdout, "wifi disconnected")
+		return nil
 	case "vpnstatus":
-		return a.printVPNStatus(ctx)
+		var payload ipc.VPNStatusPayload
+		if err := client.Request(ctx, ipc.VPNStatusAction, nil, &payload); err != nil {
+			return err
+		}
+		printVPNStatusPayload(a.stdout, payload)
+		return nil
 	case "vpnstart":
-		return a.startVPN(ctx)
+		var payload ipc.VPNStatusPayload
+		if err := client.Request(ctx, ipc.VPNStartAction, nil, &payload); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.stdout, "vpn state=%s\n", payload.State)
+		return nil
 	case "vpnstop":
-		return a.stopVPN(ctx)
+		if err := client.Request(ctx, ipc.VPNStopAction, nil, nil); err != nil {
+			return err
+		}
+		fmt.Fprintln(a.stdout, "vpn stopped")
+		return nil
 	case "cleanup":
-		return a.cleanup(ctx)
+		if err := client.Request(ctx, ipc.CleanupAction, nil, nil); err != nil {
+			return err
+		}
+		fmt.Fprintln(a.stdout, "cleanup completed")
+		return nil
 	case "exit", "quit":
-		a.runtimeManager.StopHeartbeatLoop()
 		fmt.Fprintln(a.stdout, "interactive mode exited")
 		return io.EOF
 	default:
@@ -328,6 +406,76 @@ func printSession(w io.Writer, session backend.SupportSession) {
 	fmt.Fprintf(w, "status=%s\n", session.Status)
 	fmt.Fprintf(w, "pin=%s\n", session.PIN)
 	fmt.Fprintf(w, "ip_address=%s\n", session.IPAddress)
+}
+
+func printSupportStatus(w io.Writer, payload ipc.StatusPayload) {
+	fmt.Fprintf(w, "support_active=%s\n", strconv.FormatBool(payload.SupportActive))
+	fmt.Fprintf(w, "support_state=%s\n", payload.SupportState)
+	if payload.Session != nil {
+		fmt.Fprintf(w, "status=%s\n", payload.Session.Status)
+		fmt.Fprintf(w, "pin=%s\n", payload.Session.PIN)
+		fmt.Fprintf(w, "ip_address=%s\n", payload.Session.IPAddress)
+	}
+}
+
+func printWiFiStatusPayload(w io.Writer, payload ipc.StatusPayload) {
+	fmt.Fprintf(w, "wifi_active=%s\n", strconv.FormatBool(payload.AnyWiFiActive))
+	fmt.Fprintf(w, "support_wifi_active=%s\n", strconv.FormatBool(payload.SupportWiFiActive))
+	fmt.Fprintf(w, "active_connection=%s\n", emptyAsUnset(payload.ActiveWiFiConnection))
+}
+
+func printVPNStatusPayload(w io.Writer, payload ipc.VPNStatusPayload) {
+	fmt.Fprintf(w, "state=%s\n", payload.State)
+	fmt.Fprintf(w, "service_active=%s\n", strconv.FormatBool(payload.ServiceActive))
+	fmt.Fprintf(w, "interface_present=%s\n", strconv.FormatBool(payload.InterfacePresent))
+	fmt.Fprintf(w, "ip_address=%s\n", payload.IPAddress)
+	fmt.Fprintf(w, "status_file_present=%s\n", strconv.FormatBool(payload.StatusFilePresent))
+}
+
+func formatInteractiveEvent(event ipc.RawEvent) (string, error) {
+	switch event.Event {
+	case ipc.SupportStateChangedEvent:
+		var payload ipc.StatusPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return "", err
+		}
+		if payload.Session != nil {
+			return fmt.Sprintf("event: support_state=%s pin=%s", payload.SupportState, payload.Session.PIN), nil
+		}
+		return fmt.Sprintf("event: support_state=%s", payload.SupportState), nil
+	case ipc.PinAssignedEvent:
+		var payload ipc.PinPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("event: pin_assigned=%s", payload.PIN), nil
+	case ipc.WiFiScanCompletedEvent:
+		var payload ipc.WiFiScanPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("event: wifi_scan_completed count=%d", len(payload.Networks)), nil
+	case ipc.WiFiConnectionStateChangedEvent:
+		var payload ipc.ConnectionStatePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("event: wifi_state=%s", payload.State), nil
+	case ipc.VPNStateChangedEvent:
+		var payload ipc.ConnectionStatePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("event: vpn_state=%s", payload.State), nil
+	case ipc.ErrorRaisedEvent:
+		var payload ipc.ErrorPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("event: error=%s", payload.Message), nil
+	default:
+		return fmt.Sprintf("event: %s", event.Event), nil
+	}
 }
 
 func (a *App) handleRuntimeEvent(event agentruntime.Event) {
