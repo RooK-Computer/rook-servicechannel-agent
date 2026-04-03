@@ -37,7 +37,7 @@ This means the repository should be planned as an evolution path:
 | `03-runtime-core-and-service-mode.md` | State model, background runtime, daemon evolution | Approved |
 | `04-local-ipc-and-ui-contract.md` | Unix socket IPC and later console UI integration | Approved |
 | `05-network-and-vpn-integration.md` | WLAN, OpenVPN, cleanup, reboot recovery | Approved |
-| `06-packaging-operations-and-release.md` | Packaging, observability, deployment, release gates | Implemented, review pending |
+| `06-packaging-operations-and-release.md` | Packaging, observability, deployment, release gates | Approved |
 
 ## Handoff Rules
 
