@@ -1,6 +1,6 @@
 # Plan 01 - Foundation and Bootstrap
 
-Status: Revalidated, review pending
+Status: Approved
 
 ## Goal
 
@@ -96,6 +96,16 @@ The blocking issue has been fixed:
 - the old smoke test was replaced by a shutdown-aware test plus an explicit `PrintConfig` fast-path test,
 - `gofmt -w ...` and `go test ./...` pass,
 - the built binary was verified to keep running until interrupted.
+
+## Review Outcome
+
+Plan 01 has been reviewed and approved.
+
+Confirmed outcome from the review:
+
+- the bootstrap phase now provides a stable repository baseline,
+- the earlier blocking issue in `internal/app.Run` is considered resolved,
+- follow-up implementation could proceed on top of this foundation without reopening Plan 01.
 
 ## Review Gate
 
