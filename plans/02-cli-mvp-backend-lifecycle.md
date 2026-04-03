@@ -1,6 +1,6 @@
 # Plan 02 - CLI MVP Backend Lifecycle
 
-Status: Implemented, review pending
+Status: Approved
 
 ## Goal
 
@@ -171,6 +171,7 @@ Validation completed with:
 - `make fmt`
 - `make test`
 - interactive prompt smoke test (`help`, `exit`)
+- interactive integration test against the real backend session lifecycle
 
 ## Related Spec Work
 
@@ -187,6 +188,16 @@ Do not hardwire backend payload handling directly into the command layer. Put ba
 ## Review Gate
 
 When this plan is implemented, stop after the prompt-driven CLI MVP and its validation are complete. Do not continue into runtime-core work before the user has reviewed the phase.
+
+## Review Outcome
+
+Plan 02 has been formally reviewed and approved.
+
+Confirmed outcomes from the review:
+
+- the interactive CLI MVP stayed stable in the successful integration run,
+- the backend-facing session lifecycle behaved correctly in interactive mode,
+- the next implementation step is now the reusable runtime core from Plan 03 rather than more MVP-only CLI shaping.
 
 ## Handoff Notes for Execution
 

@@ -1,0 +1,30 @@
+name: "rook-agent"
+arch: "amd64"
+platform: "linux"
+version: "${VERSION}"
+release: "1"
+section: "utils"
+priority: "optional"
+maintainer: "RooK Project <noreply@rook.invalid>"
+description: |
+  RooK console agent with backend session lifecycle, local IPC,
+  WLAN/OpenVPN integration, and service-mode runtime management.
+vendor: "RooK"
+homepage: "https://github.com/rook"
+license: "UNLICENSED"
+depends:
+  - systemd
+  - network-manager
+  - openvpn
+  - iproute2
+files:
+  ./build/rook-agent: /usr/bin/rook-agent
+  ./packaging/systemd/rook-agent.service: /lib/systemd/system/rook-agent.service
+config_files:
+  ./packaging/default/rook-agent: /etc/default/rook-agent
+overrides:
+  deb:
+    scripts:
+      postinstall: ./packaging/scripts/postinstall.sh
+      preremove: ./packaging/scripts/preremove.sh
+      postremove: ./packaging/scripts/postremove.sh

@@ -1,6 +1,6 @@
 # Plan 06 - Packaging, Operations, and Release
 
-Status: Planned
+Status: Implemented, review pending
 
 ## Goal
 
@@ -20,12 +20,12 @@ Make the repository deployable, supportable, and releasable on the target consol
 
 | Workstream | Description | Status |
 | --- | --- | --- |
-| Packaging layout | Define file locations, config paths, and package contents for an installable Debian package | Planned |
-| Service assets | Add `systemd` unit files and install hooks | Planned |
-| Runtime config docs | Document required environment, configurable backend API endpoint, and secrets handling | Planned |
-| Observability | Define logs, debug commands, and failure triage surface | Planned |
-| Release checklist | Establish validation gates for packaged delivery | Planned |
-| Upgrade behavior | Plan package upgrades and local state migration | Planned |
+| Packaging layout | Define file locations, config paths, and package contents for an installable Debian package | Done |
+| Service assets | Add `systemd` unit files and install hooks | Done |
+| Runtime config docs | Document required environment, configurable backend API endpoint, and secrets handling | Done |
+| Observability | Define logs, debug commands, and failure triage surface | Done |
+| Release checklist | Establish validation gates for packaged delivery | Done |
+| Upgrade behavior | Plan package upgrades and local state migration | Done |
 
 ## Dependencies
 
@@ -38,6 +38,62 @@ Make the repository deployable, supportable, and releasable on the target consol
 - deployable service assets,
 - operations runbook content in the README or adjacent docs,
 - release checklist for future delivery work.
+
+## Implementation Notes
+
+Implemented artifacts:
+
+- `packaging/nfpm.yaml` for Debian packaging via `nfpm`,
+- `packaging/systemd/rook-agent.service` for the packaged service-mode runtime,
+- `packaging/default/rook-agent` for packaged runtime environment defaults,
+- maintainer scripts under `packaging/scripts/`,
+- `make package` as the packaging entrypoint,
+- README updates for packaged installation, configuration, and diagnostics.
+
+Implementation choices in this phase:
+
+- the first packaged format is Debian only,
+- the packaged service runs the already existing `rook-agent service` path instead of introducing a separate daemon binary,
+- packaged runtime paths are fixed to `/var/lib/rook-agent/session.json` and `/run/rook-agent/agent.sock`,
+- backend endpoint configuration remains environment-driven through `/etc/default/rook-agent`,
+- package installation reloads `systemd`, but service enable/start remains an explicit operator step.
+
+## Verification
+
+Validation completed with:
+
+- `make test`
+- `make build`
+- `make package`
+- `dpkg-deb -c build/packages/rook-agent_0.0.0-1~dev_amd64.deb`
+- `dpkg-deb -I build/packages/rook-agent_0.0.0-1~dev_amd64.deb`
+
+The resulting state after this phase:
+
+- the agent can be built into an installable Debian package,
+- the package ships the binary, service unit, and packaged environment file,
+- operators have a documented way to configure backend URL, inspect logs, and start the service,
+- release gates and conservative upgrade expectations are now explicit in repository documentation.
+
+## Release Checklist
+
+Before calling a Plan 06 delivery ready, check at least:
+
+1. `make test` passes.
+2. `make build` produces the expected binary.
+3. `make package` produces the Debian artifact.
+4. The package contains `/usr/bin/rook-agent`, `/lib/systemd/system/rook-agent.service`, and `/etc/default/rook-agent`.
+5. `/etc/default/rook-agent` still exposes a supported way to configure the backend endpoint.
+6. README and status documents match the packaged runtime paths and operator flow.
+
+## Upgrade Behavior
+
+Current package upgrade expectations:
+
+- `/etc/default/rook-agent` is treated as operator-managed config and must not be silently overwritten,
+- local runtime state remains under `/var/lib/rook-agent`,
+- package upgrades should preserve state unless a future migration step is explicitly documented,
+- service enable/start remains an operator choice after install or upgrade.
 
 ## Exit Criteria
 
@@ -53,3 +109,9 @@ When this plan is implemented, stop after packaging validation and wait for user
 ## Handoff Notes
 
 If packaging work starts before WLAN and VPN are implemented, package the CLI MVP and runtime core first, but document that the package is intentionally incomplete relative to the final architecture.
+
+At the review stop for this phase:
+
+- stop before any new follow-up phase,
+- review whether the first Debian package shape and operator flow are acceptable,
+- treat stricter hardening of the packaged service as follow-up work rather than silently broadening Plan 06.

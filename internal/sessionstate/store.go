@@ -14,6 +14,7 @@ var ErrStateNotFound = errors.New("session state not found")
 
 type State struct {
 	Session backend.SupportSession `json:"session"`
+	BootID  string                 `json:"bootId,omitempty"`
 }
 
 func (s State) Validate() error {

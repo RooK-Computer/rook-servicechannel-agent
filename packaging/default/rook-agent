@@ -1,0 +1,8 @@
+# RooK agent packaged runtime configuration.
+# Adjust the backend URL for the target environment before enabling the service.
+
+ROOK_AGENT_BACKEND_URL=http://localhost:8080
+ROOK_AGENT_LOG_LEVEL=info
+ROOK_AGENT_STATE_PATH=/var/lib/rook-agent/session.json
+ROOK_AGENT_SOCKET_PATH=/run/rook-agent/agent.sock
+# ROOK_AGENT_CONSOLE_ID=

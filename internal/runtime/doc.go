@@ -1,2 +1,2 @@
-// Package runtime will hold the long-lived agent state machine and lifecycle logic.
+// Package runtime owns the long-lived agent state machine and session lifecycle.
 package runtime

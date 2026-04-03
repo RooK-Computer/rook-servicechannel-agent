@@ -1,6 +1,6 @@
 # Plan 04 - Local IPC and UI Contract
 
-Status: Planned
+Status: Approved
 
 ## Goal
 
@@ -18,12 +18,12 @@ Add the local control surface needed for a later console UI while keeping state 
 
 | Workstream | Description | Status |
 | --- | --- | --- |
-| Socket transport | Create the Unix socket server and lifecycle handling | Planned |
-| Request contract | Define request and response types for supported actions | Planned |
-| Event stream | Emit asynchronous state-change events | Planned |
-| Auth and permissions | Decide local access and filesystem permissions for the socket | Planned |
-| Reconnect behavior | Ensure UI restarts can recover current state | Planned |
-| Integration fixtures | Add examples or test fixtures for UI-side consumers | Planned |
+| Socket transport | Create the Unix socket server and lifecycle handling | Done |
+| Request contract | Define request and response types for supported actions | Done |
+| Event stream | Emit asynchronous state-change events | Done |
+| Auth and permissions | Decide local access and filesystem permissions for the socket | Done |
+| Reconnect behavior | Ensure UI restarts can recover current state | Done |
+| Integration fixtures | Add examples or test fixtures for UI-side consumers | Done |
 
 ## Dependencies
 
@@ -37,6 +37,36 @@ Add the local control surface needed for a later console UI while keeping state 
 - tests for reconnect and event sequencing,
 - updated status docs describing IPC readiness.
 
+## Implementation Notes
+
+Implemented artifacts:
+
+- local Unix domain socket server in `internal/ipc/server.go`,
+- JSON contract types for requests, responses, and asynchronous events in `internal/ipc/contract.go`,
+- service-mode integration so the IPC server starts alongside the runtime core,
+- runtime snapshot access and event subscription support so IPC stays attached to the existing state owner,
+- tests for start/stop event sequencing and reconnect-friendly status retrieval.
+
+Implementation choices in this phase:
+
+- the socket transport uses a single long-lived Unix socket connection per client with JSON messages streamed over the same connection,
+- supported request actions in this first contract slice are `GetStatus`, `StartSupport`, `StopSupport`, and `GetPin`,
+- asynchronous events currently include `SupportStateChanged`, `PinAssigned`, and `ErrorRaised`,
+- socket directories are created with `0700` permissions and the socket node itself is restricted to `0600`.
+
+## Verification
+
+Validation completed with:
+
+- `make fmt`
+- `make test`
+
+The resulting state after this phase:
+
+- a separate local UI process can query the current agent status over IPC,
+- the UI can trigger support-session start and stop without owning backend or lifecycle logic,
+- reconnecting clients can read the current agent state from the runtime-backed local snapshot.
+
 ## Exit Criteria
 
 - A separate UI process can request current agent state and receive updates.
@@ -49,3 +79,19 @@ When this plan is implemented, stop after IPC validation and wait for user revie
 ## Handoff Notes
 
 Keep request types aligned with the shared architecture, but revisit the command list once WLAN and VPN integration are implemented so the contract reflects real capabilities.
+
+At the review stop for this phase:
+
+- begin Plan 05 next, not Plan 06,
+- keep the IPC contract extensible for later WLAN and VPN commands,
+- avoid moving state ownership out of `internal/runtime`; extend the existing runtime core instead.
+
+## Review Outcome
+
+Plan 04 has been reviewed and approved.
+
+Confirmed outcome from the review:
+
+- the local IPC layer is accepted as the new UI integration baseline,
+- the next active implementation phase is Plan 05 for WLAN, OpenVPN, and cleanup,
+- the existing IPC contract should now be extended rather than replaced.

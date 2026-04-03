@@ -15,27 +15,39 @@ const (
 )
 
 type Config struct {
-	BackendURL  string
-	ConsoleID   string
-	LogLevel    string
-	PrintConfig bool
-	Interactive bool
-	StatePath   string
-	SessionPIN  string
-	Command     Command
+	BackendURL   string
+	ConsoleID    string
+	LogLevel     string
+	PrintConfig  bool
+	Interactive  bool
+	StatePath    string
+	SocketPath   string
+	SessionPIN   string
+	WiFiSSID     string
+	WiFiPassword string
+	Command      Command
 }
 
 type Command string
 
 const (
-	RunCommand         Command = "run"
-	InteractiveCommand Command = "interactive"
-	ConfigCommand      Command = "config"
-	StartCommand       Command = "start"
-	StatusCommand      Command = "status"
-	PinCommand         Command = "pin"
-	PingCommand        Command = "ping"
-	StopCommand        Command = "stop"
+	RunCommand            Command = "run"
+	ServiceCommand        Command = "service"
+	InteractiveCommand    Command = "interactive"
+	ConfigCommand         Command = "config"
+	StartCommand          Command = "start"
+	StatusCommand         Command = "status"
+	PinCommand            Command = "pin"
+	PingCommand           Command = "ping"
+	StopCommand           Command = "stop"
+	ScanWiFiCommand       Command = "scanwifi"
+	WiFiStatusCommand     Command = "wifistatus"
+	ConnectWiFiCommand    Command = "connectwifi"
+	DisconnectWiFiCommand Command = "disconnectwifi"
+	VPNStatusCommand      Command = "vpnstatus"
+	VPNStartCommand       Command = "vpnstart"
+	VPNStopCommand        Command = "vpnstop"
+	CleanupCommand        Command = "cleanup"
 )
 
 func Load(args []string, env []string) (Config, error) {
@@ -55,7 +67,10 @@ func Load(args []string, env []string) (Config, error) {
 	fs.StringVar(&cfg.ConsoleID, "console-id", envOrDefault(envMap, "ROOK_AGENT_CONSOLE_ID", ""), "Stable console identity used for backend communication")
 	fs.StringVar(&cfg.LogLevel, "log-level", envOrDefault(envMap, "ROOK_AGENT_LOG_LEVEL", defaultLogLevel), "Log level (debug, info, warn, error)")
 	fs.StringVar(&cfg.StatePath, "state-path", envOrDefault(envMap, "ROOK_AGENT_STATE_PATH", defaultStatePath()), "Path to the local session state file")
+	fs.StringVar(&cfg.SocketPath, "socket-path", envOrDefault(envMap, "ROOK_AGENT_SOCKET_PATH", defaultSocketPath()), "Path to the local IPC Unix socket")
 	fs.StringVar(&cfg.SessionPIN, "pin", envOrDefault(envMap, "ROOK_AGENT_PIN", ""), "Override the active session PIN for session-scoped commands")
+	fs.StringVar(&cfg.WiFiSSID, "ssid", envOrDefault(envMap, "ROOK_AGENT_WIFI_SSID", ""), "SSID for WiFi connection commands")
+	fs.StringVar(&cfg.WiFiPassword, "wifi-password", envOrDefault(envMap, "ROOK_AGENT_WIFI_PASSWORD", ""), "Password for WiFi connection commands")
 	fs.BoolVar(&cfg.PrintConfig, "print-config", false, "Print the effective configuration and exit")
 	fs.BoolVar(&cfg.Interactive, "interactive", false, "Run the agent in interactive prompt mode")
 
@@ -96,6 +111,10 @@ func (c Config) Validate() error {
 		errs = append(errs, errors.New("state path must not be empty"))
 	}
 
+	if strings.TrimSpace(c.SocketPath) == "" {
+		errs = append(errs, errors.New("socket path must not be empty"))
+	}
+
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
@@ -109,7 +128,7 @@ func (c Config) Summary() string {
 		consoleID = "<unset>"
 	}
 
-	return fmt.Sprintf("backend_url=%s console_id=%s log_level=%s state_path=%s command=%s", c.BackendURL, consoleID, c.LogLevel, c.StatePath, c.Command)
+	return fmt.Sprintf("backend_url=%s console_id=%s log_level=%s state_path=%s socket_path=%s command=%s", c.BackendURL, consoleID, c.LogLevel, c.StatePath, c.SocketPath, c.Command)
 }
 
 func environmentMap(env []string) map[string]string {
@@ -137,7 +156,7 @@ func parseCommand(args []string) (Command, []string, error) {
 	}
 
 	switch Command(args[0]) {
-	case InteractiveCommand, ConfigCommand, StartCommand, StatusCommand, PinCommand, PingCommand, StopCommand:
+	case ServiceCommand, InteractiveCommand, ConfigCommand, StartCommand, StatusCommand, PinCommand, PingCommand, StopCommand, ScanWiFiCommand, WiFiStatusCommand, ConnectWiFiCommand, DisconnectWiFiCommand, VPNStatusCommand, VPNStartCommand, VPNStopCommand, CleanupCommand:
 		return Command(args[0]), args[1:], nil
 	default:
 		return "", nil, fmt.Errorf("unknown command %q", args[0])
@@ -151,4 +170,13 @@ func defaultStatePath() string {
 	}
 
 	return filepath.Join(configDir, "rook-agent", "session.json")
+}
+
+func defaultSocketPath() string {
+	configDir, err := os.UserConfigDir()
+	if err != nil || strings.TrimSpace(configDir) == "" {
+		return filepath.Join(".rook-agent", "agent.sock")
+	}
+
+	return filepath.Join(configDir, "rook-agent", "agent.sock")
 }

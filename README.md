@@ -4,7 +4,7 @@ This repository hosts the RooK console agent implementation.
 
 ## Current State
 
-The repository now contains the first backend-facing CLI MVP for the RooK console agent. The shared system architecture and implementation status are maintained in the `spec/` submodule, while repository-local execution plans live in `plans/`.
+The repository now contains the backend-facing CLI MVP, the reusable runtime core, the local IPC surface, the WLAN/OpenVPN integration, and a first Debian packaging path for the RooK console agent. The shared system architecture and implementation status are maintained in the `spec/` submodule, while repository-local execution plans live in `plans/`.
 
 ## Current Delivery Strategy
 
@@ -15,7 +15,7 @@ The first MVP is intentionally smaller:
 - build an interactive CLI tool first,
 - focus on communication with the backend,
 - make the support-session lifecycle testable in an integration environment,
-- defer WLAN and VPN work to later phases.
+- then extend the same runtime toward the full local agent responsibilities.
 
 ## Repository Layout
 
@@ -28,6 +28,8 @@ The first MVP is intentionally smaller:
 - `internal/app` - current application bootstrap surface
 - `internal/backend` - reserved backend adapter boundary
 - `internal/runtime` - reserved runtime core boundary
+- `internal/ipc` - local Unix socket transport and JSON UI contract
+- `internal/network` - local WLAN, OpenVPN, and cleanup adapters
 
 ## Key Documents
 
@@ -42,7 +44,8 @@ The first MVP is intentionally smaller:
 2. Deliver the backend-facing interactive CLI MVP.
 3. Extract and harden the runtime core for service mode.
 4. Add local IPC for the future console UI.
-5. Integrate WLAN, OpenVPN, cleanup, and packaging.
+5. Integrate WLAN, OpenVPN, and cleanup.
+6. Add packaging and release-oriented operating work.
 
 ## Local Development
 
@@ -52,9 +55,12 @@ Current development commands:
 - `make test`
 - `make fmt`
 - `make run`
+- `make package`
 - `make tidy`
 - `go test ./...`
 - `go run ./cmd/rook-agent --interactive --backend-url https://backend.example.test`
+- `go run ./cmd/rook-agent service --backend-url https://backend.example.test`
+- `go run ./cmd/rook-agent --backend-url https://backend.example.test`
 - `go run ./cmd/rook-agent config`
 - `go run ./cmd/rook-agent start --backend-url https://backend.example.test`
 - `go run ./cmd/rook-agent status --backend-url https://backend.example.test`
@@ -76,13 +82,25 @@ Additional bootstrap configuration:
 - flag / environment: `--console-id` / `ROOK_AGENT_CONSOLE_ID`
 - flag / environment: `--log-level` / `ROOK_AGENT_LOG_LEVEL`
 - flag / environment: `--state-path` / `ROOK_AGENT_STATE_PATH`
+- flag / environment: `--socket-path` / `ROOK_AGENT_SOCKET_PATH`
 - flag / environment: `--pin` / `ROOK_AGENT_PIN`
+- flag / environment: `--ssid` / `ROOK_AGENT_WIFI_SSID`
+- flag / environment: `--wifi-password` / `ROOK_AGENT_WIFI_PASSWORD`
 
 Flags override environment variables.
 
-## CLI MVP Commands
+## Runtime and CLI Commands
 
-The current CLI MVP is session-centric and talks directly to the backend REST API.
+The current agent binary exposes both a service-style runtime path and a session-centric CLI surface against the backend REST API.
+
+Service-oriented execution:
+
+- no explicit command: run service mode and wait for shutdown
+- `service`: run service mode explicitly
+
+In service mode, the agent resumes a locally persisted active session, continues heartbeats in the background, and attempts to end the session cleanly during graceful shutdown.
+
+Service mode also starts the local Unix domain socket IPC server for a later console UI.
 
 Primary mode:
 
@@ -97,6 +115,14 @@ Available commands inside the prompt:
 - `pin` - print the active session PIN
 - `ping` - send an extra manual heartbeat immediately
 - `stop` - end the active session and stop the heartbeat loop
+- `scanwifi` - list visible WiFi SSIDs through `nmcli`
+- `wifistatus` - report whether any WiFi connection is active and whether it is the RooK support WiFi profile
+- `connectwifi <ssid> <password>` - create and activate the temporary RooK support WiFi profile
+- `disconnectwifi` - remove the temporary RooK support WiFi profile
+- `vpnstatus` - print the effective OpenVPN status from local signals
+- `vpnstart` - start the OpenVPN client service
+- `vpnstop` - stop the OpenVPN client service
+- `cleanup` - remove temporary WiFi/VPN support artifacts
 - `exit` - leave the interactive shell
 
 Direct subcommands remain available as a secondary interface:
@@ -107,10 +133,107 @@ Direct subcommands remain available as a secondary interface:
 - `pin` - print the active session PIN from local state or `--pin`
 - `ping` - send a manual heartbeat
 - `stop` - end the active session and clear local state
+- `scanwifi` - list visible WiFi SSIDs
+- `wifistatus` - report whether any WiFi connection is active and whether it is the RooK support WiFi profile
+- `connectwifi --ssid <name> --wifi-password <password>` - connect the temporary support WiFi profile
+- `disconnectwifi` - remove the temporary support WiFi profile
+- `vpnstatus` - print the effective OpenVPN status
+- `vpnstart` - start the OpenVPN client service
+- `vpnstop` - stop the OpenVPN client service
+- `cleanup` - stop VPN and remove temporary support WiFi state
 
 If `--pin` is not provided, `status`, `pin`, `ping`, and `stop` use the locally persisted session state file.
 
 In interactive mode, `start` also starts an automatic heartbeat loop that keeps the backend session alive until `stop`, `exit`, or a fatal backend heartbeat error occurs.
+
+Both the interactive prompt and the direct session commands now reuse the shared runtime core in `internal/runtime`.
+
+## Local IPC Contract
+
+The current IPC surface is available in service mode over a Unix domain socket.
+
+Defaults:
+
+- socket path: `ROOK_AGENT_SOCKET_PATH` or the configured default under the user config directory
+- transport: Unix domain socket
+- message format: streamed JSON request/response plus asynchronous event messages
+
+Currently implemented request actions:
+
+- `GetStatus`
+- `ScanWifi`
+- `ConnectWifi`
+- `DisconnectWifi`
+- `StartSupport`
+- `StopSupport`
+- `GetPin`
+
+The `GetStatus` payload currently distinguishes between:
+
+- `wifiState` for the RooK-managed support WiFi state,
+- `anyWifiActive` for a general active WiFi connection on the host,
+- `supportWifiActive` for the RooK support WiFi profile specifically,
+- `activeWifiConnection` for the currently active WiFi connection name when available.
+
+Currently implemented asynchronous events:
+
+- `WifiScanCompleted`
+- `WifiConnectionStateChanged`
+- `VpnStateChanged`
+- `SupportStateChanged`
+- `PinAssigned`
+- `ErrorRaised`
+
+## Debian Packaging
+
+The repository now contains a first Debian packaging path for the current delivery slice.
+
+Artifacts and assets:
+
+- `make package` builds `build/packages/rook-agent_0.0.0-1~dev_amd64.deb`
+- `packaging/nfpm.yaml` defines the package metadata and installed files
+- `packaging/systemd/rook-agent.service` provides the packaged service unit
+- `packaging/default/rook-agent` provides packaged runtime configuration defaults
+
+Installed paths in the package:
+
+- binary: `/usr/bin/rook-agent`
+- service unit: `/lib/systemd/system/rook-agent.service`
+- environment file: `/etc/default/rook-agent`
+
+Packaged runtime defaults:
+
+- backend URL: `ROOK_AGENT_BACKEND_URL` in `/etc/default/rook-agent`
+- log level: `ROOK_AGENT_LOG_LEVEL`
+- state path: `/var/lib/rook-agent/session.json`
+- socket path: `/run/rook-agent/agent.sock`
+
+Typical packaged service flow:
+
+1. Build the package:
+   - `make package`
+2. Install it on the target Debian system:
+   - `sudo dpkg -i build/packages/rook-agent_0.0.0-1~dev_amd64.deb`
+3. Adjust `/etc/default/rook-agent` for the target backend and console environment.
+4. Enable and start the service:
+   - `sudo systemctl enable --now rook-agent.service`
+
+## Operations and Diagnostics
+
+Useful packaged-operation commands:
+
+- `systemctl status rook-agent.service`
+- `journalctl -u rook-agent.service`
+- `rook-agent config`
+- `rook-agent wifistatus`
+- `rook-agent vpnstatus`
+
+First-line operator checks:
+
+1. confirm the backend URL in `/etc/default/rook-agent`
+2. inspect the service state in `systemctl status`
+3. inspect logs in `journalctl -u rook-agent.service`
+4. confirm runtime paths under `/var/lib/rook-agent` and `/run/rook-agent`
 
 ## Manual MVP Integration Flow
 
@@ -127,7 +250,7 @@ In interactive mode, `start` also starts an automatic heartbeat loop that keeps 
 6. Leave the prompt:
    - `exit`
 
-This MVP intentionally focuses on the backend session lifecycle only. WLAN, VPN runtime control, and local UI IPC remain future phases.
+The current implementation now includes WLAN management, OpenVPN control/observation, cleanup handling, and a first installable Debian package path. Further release hardening remains a later follow-up.
 
 ## Notes
 
