@@ -89,6 +89,15 @@ Additional bootstrap configuration:
 
 Flags override environment variables.
 
+In packaged deployments, the agent service reads its runtime environment from `/etc/default/rook-agent`.
+That file uses `KEY=VALUE` lines with optional `#` comments and currently ships:
+
+- `ROOK_AGENT_BACKEND_URL`
+- `ROOK_AGENT_LOG_LEVEL`
+- `ROOK_AGENT_STATE_PATH`
+- `ROOK_AGENT_SOCKET_PATH`
+- optional `ROOK_AGENT_CONSOLE_ID`
+
 ## Runtime and CLI Commands
 
 The current agent binary exposes a service-style runtime path, an IPC-backed interactive console for that service, and a session-centric direct CLI surface against the backend REST API.
@@ -163,6 +172,14 @@ Defaults:
 - socket path: `ROOK_AGENT_SOCKET_PATH` or the configured default under the user config directory
 - transport: Unix domain socket
 - message format: streamed JSON request/response plus asynchronous event messages
+
+For packaged UI integrations, the supported way to discover the socket is:
+
+1. read `/etc/default/rook-agent`
+2. resolve `ROOK_AGENT_SOCKET_PATH`
+3. connect to that Unix socket path
+
+If the packaged config keeps its shipped default, that path is `/run/rook-agent/agent.sock`.
 
 Currently implemented request actions:
 

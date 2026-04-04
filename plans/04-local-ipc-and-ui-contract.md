@@ -46,10 +46,12 @@ Implemented artifacts:
 - service-mode integration so the IPC server starts alongside the runtime core,
 - runtime snapshot access and event subscription support so IPC stays attached to the existing state owner,
 - tests for start/stop event sequencing and reconnect-friendly status retrieval.
+- shared spec updates that explain how the UI resolves the agent socket path in packaged deployments through `/etc/default/rook-agent` and `ROOK_AGENT_SOCKET_PATH`.
 
 Implementation choices in this phase:
 
 - the socket transport uses a single long-lived Unix socket connection per client with JSON messages streamed over the same connection,
+- packaged UI integrations resolve the socket path from the shared agent environment file `/etc/default/rook-agent` instead of probing for candidate paths,
 - supported request actions in this first contract slice are `GetStatus`, `StartSupport`, `StopSupport`, and `GetPin`,
 - asynchronous events currently include `SupportStateChanged`, `PinAssigned`, and `ErrorRaised`,
 - socket directories are created with `0700` permissions and the socket node itself is restricted to `0600`.

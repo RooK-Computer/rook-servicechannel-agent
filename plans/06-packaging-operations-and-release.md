@@ -49,6 +49,7 @@ Implemented artifacts:
 - maintainer scripts under `packaging/scripts/`,
 - `make package` as the packaging entrypoint,
 - README updates for packaged installation, configuration, diagnostics, and service-backed interactive usage.
+- shared spec updates that document `/etc/default/rook-agent` as the packaged agent configuration file and explain all shipped parameters.
 
 Implementation choices in this phase:
 
@@ -56,6 +57,7 @@ Implementation choices in this phase:
 - the packaged service runs the already existing `rook-agent service` path instead of introducing a separate daemon binary,
 - packaged runtime paths are fixed to `/var/lib/rook-agent/session.json` and `/run/rook-agent/agent.sock`,
 - backend endpoint configuration remains environment-driven through `/etc/default/rook-agent`,
+- the packaged config file format follows systemd `EnvironmentFile` semantics with `KEY=VALUE` entries and comments starting with `#`,
 - package installation reloads `systemd`, but service enable/start remains an explicit operator step,
 - the interactive mode now acts as an IPC client for the running service and fails clearly if the packaged service/socket is unavailable.
 
