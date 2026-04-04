@@ -89,6 +89,12 @@ Additional bootstrap configuration:
 
 Flags override environment variables.
 
+Log levels:
+
+- `info` remains the default operator view
+- `debug` additionally logs incoming IPC requests, outgoing IPC responses/events, and backend HTTP request/response bodies
+- debug message logging redacts obvious secret fields such as WiFi passwords before writing them to stderr / `journalctl`
+
 In packaged deployments, the agent service reads its runtime environment from `/etc/default/rook-agent`.
 That file uses `KEY=VALUE` lines with optional `#` comments and currently ships:
 
@@ -133,10 +139,10 @@ Available commands inside the prompt:
 - `stop` - ask the running service to end the active session
 - `scanwifi` - ask the running service to list visible WiFi SSIDs
 - `wifistatus` - report whether any WiFi connection is active and whether it is the RooK support WiFi profile
-- `connectwifi <ssid> <password>` - ask the running service to create and activate the temporary RooK support WiFi profile
+- `connectwifi <ssid> <password>` - ask the running service to create and activate the temporary RooK support WiFi profile; the command only returns after the support WiFi profile is active and has an IPv4 address
 - `disconnectwifi` - ask the running service to remove the temporary RooK support WiFi profile
 - `vpnstatus` - print the effective OpenVPN status reported by the running service
-- `vpnstart` - ask the running service to start the OpenVPN client service
+- `vpnstart` - ask the running service to start the OpenVPN client service; the command only returns after the `rookvpn` interface has an IPv4 address
 - `vpnstop` - ask the running service to stop the OpenVPN client service
 - `cleanup` - ask the running service to remove temporary WiFi/VPN support artifacts
 - `exit` - leave the interactive shell
@@ -151,10 +157,10 @@ Direct subcommands remain available as a secondary interface:
 - `stop` - end the active session and clear local state
 - `scanwifi` - list visible WiFi SSIDs
 - `wifistatus` - report whether any WiFi connection is active and whether it is the RooK support WiFi profile
-- `connectwifi --ssid <name> --wifi-password <password>` - connect the temporary support WiFi profile
+- `connectwifi --ssid <name> --wifi-password <password>` - connect the temporary support WiFi profile and wait until it has an IPv4 address
 - `disconnectwifi` - remove the temporary support WiFi profile
 - `vpnstatus` - print the effective OpenVPN status
-- `vpnstart` - start the OpenVPN client service
+- `vpnstart` - start the OpenVPN client service and wait until the `rookvpn` interface has an IPv4 address
 - `vpnstop` - stop the OpenVPN client service
 - `cleanup` - stop VPN and remove temporary support WiFi state
 
@@ -258,6 +264,7 @@ Useful packaged-operation commands:
 
 - `systemctl status rook-agent.service`
 - `journalctl -u rook-agent.service`
+- `journalctl -u rook-agent.service -f`
 - `rook-agent config`
 - `rook-agent wifistatus`
 - `rook-agent vpnstatus`
@@ -272,6 +279,8 @@ First-line operator checks:
 2. inspect the service state in `systemctl status`
 3. inspect logs in `journalctl -u rook-agent.service`
 4. confirm runtime paths under `/var/lib/rook-agent` and `/run/rook-agent`
+
+To inspect full agent message flow on a target system, set `ROOK_AGENT_LOG_LEVEL=debug` in `/etc/default/rook-agent`, restart the service, and follow `journalctl -u rook-agent.service -f`. In debug mode the service logs inbound IPC messages plus the resulting IPC/backend responses; obvious secret fields such as WiFi passwords are redacted.
 
 ## Manual MVP Integration Flow
 

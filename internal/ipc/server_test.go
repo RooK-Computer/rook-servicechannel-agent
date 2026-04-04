@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -35,11 +36,29 @@ func (r fakeRunner) Run(_ context.Context, name string, args ...string) (string,
 func newFakeNetworkAdapters() (*network.WiFiManager, *network.VPNManager) {
 	runner := fakeRunner{
 		outputs: map[string]string{
-			"nmcli --terse --fields SSID dev wifi list --rescan yes":             "Cafe\nOffice\n",
-			"nmcli connection delete rook-support-wifi":                          "",
-			"nmcli --terse --fields NAME,TYPE connection show --active":          "HomeNetwork:802-11-wireless\n",
-			"nmcli dev wifi connect Cafe password secret name rook-support-wifi": "",
-			"systemctl is-active rook-openvpn-client.service":                    "inactive\n",
+			"nmcli --terse --fields SSID dev wifi list --rescan yes":                        "Cafe\nOffice\n",
+			"nmcli connection delete rook-support-wifi":                                     "",
+			"nmcli --terse --fields NAME,TYPE connection show --active":                     "HomeNetwork:802-11-wireless\n",
+			"nmcli --terse --fields IP4.ADDRESS connection show --active rook-support-wifi": "10.0.0.5/24\n",
+			"nmcli dev wifi connect Cafe password secret name rook-support-wifi":            "",
+			"systemctl is-active rook-openvpn-client.service":                               "inactive\n",
+		},
+		errors: map[string]error{
+			"ip -o -4 addr show dev rookvpn": errors.New("Cannot find device"),
+		},
+	}
+	return network.NewWiFiManager(runner), network.NewVPNManager(runner)
+}
+
+func newConnectReadyNetworkAdapters() (*network.WiFiManager, *network.VPNManager) {
+	runner := fakeRunner{
+		outputs: map[string]string{
+			"nmcli --terse --fields SSID dev wifi list --rescan yes":                        "Cafe\nOffice\n",
+			"nmcli connection delete rook-support-wifi":                                     "",
+			"nmcli --terse --fields NAME,TYPE connection show --active":                     "rook-support-wifi:802-11-wireless\n",
+			"nmcli --terse --fields IP4.ADDRESS connection show --active rook-support-wifi": "10.0.0.5/24\n",
+			"nmcli dev wifi connect Cafe password secret name rook-support-wifi":            "",
+			"systemctl is-active rook-openvpn-client.service":                               "inactive\n",
 		},
 		errors: map[string]error{
 			"ip -o -4 addr show dev rookvpn": errors.New("Cannot find device"),
@@ -342,10 +361,76 @@ func TestServerStopSupportReturnsInactiveStatus(t *testing.T) {
 	}
 }
 
+func TestServerDebugLoggingShowsIPCMessagesAndRedactsSecrets(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "agent.sock")
+	manager := agentruntime.New("https://backend.example.test", filepath.Join(t.TempDir(), "session.json"))
+	wifiManager, vpnManager := newConnectReadyNetworkAdapters()
+
+	var logOutput bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	ipcServer := NewServer(socketPath, logger, manager, wifiManager, vpnManager)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ipcServer.Run(ctx)
+	}()
+
+	conn := waitForSocket(t, socketPath)
+	defer conn.Close()
+
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	if err := encoder.Encode(Request{
+		ID:     "1",
+		Action: ConnectWiFiAction,
+		Payload: json.RawMessage(
+			`{"ssid":"Cafe","password":"secret"}`,
+		),
+	}); err != nil {
+		t.Fatalf("Encode() returned error: %v", err)
+	}
+
+	var response Response
+	if err := decoder.Decode(&response); err != nil {
+		t.Fatalf("Decode(response) returned error: %v", err)
+	}
+	if !response.Success {
+		t.Fatalf("response = %#v, want success", response)
+	}
+
+	var event Event
+	if err := decoder.Decode(&event); err != nil {
+		t.Fatalf("Decode(event) returned error: %v", err)
+	}
+
+	cancel()
+	if err := <-errCh; err != nil {
+		t.Fatalf("Run() returned error: %v", err)
+	}
+
+	logs := logOutput.String()
+	if !strings.Contains(logs, "ipc request received") || !strings.Contains(logs, "\\\"action\\\":\\\"ConnectWifi\\\"") {
+		t.Fatalf("logs = %q, want ipc request log", logs)
+	}
+	if !strings.Contains(logs, "ipc outbound message") || !strings.Contains(logs, "\\\"success\\\":true") {
+		t.Fatalf("logs = %q, want ipc response log", logs)
+	}
+	if strings.Contains(logs, "\\\"password\\\":\\\"secret\\\"") {
+		t.Fatalf("logs = %q, password must be redacted", logs)
+	}
+	if !strings.Contains(logs, "\\\"password\\\":\\\"\\\\u003credacted\\\\u003e\\\"") {
+		t.Fatalf("logs = %q, want redacted password", logs)
+	}
+}
+
 func TestServerScanAndConnectWifi(t *testing.T) {
 	socketPath := filepath.Join(t.TempDir(), "agent.sock")
 	manager := agentruntime.New("https://backend.example.test", filepath.Join(t.TempDir(), "session.json"))
-	wifiManager, vpnManager := newFakeNetworkAdapters()
+	wifiManager, vpnManager := newConnectReadyNetworkAdapters()
 	ipcServer := NewServer(socketPath, slog.New(slog.DiscardHandler), manager, wifiManager, vpnManager)
 
 	ctx, cancel := context.WithCancel(context.Background())

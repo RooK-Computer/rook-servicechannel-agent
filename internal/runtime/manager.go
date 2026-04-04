@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -75,6 +76,7 @@ type Manager struct {
 	backendURL string
 	stateStore sessionstate.Store
 	bootIDFunc func() (string, error)
+	logger     *slog.Logger
 
 	heartbeatInterval time.Duration
 
@@ -127,6 +129,10 @@ func (m *Manager) SetHeartbeatInterval(interval time.Duration) {
 	m.heartbeatMu.Lock()
 	defer m.heartbeatMu.Unlock()
 	m.heartbeatInterval = interval
+}
+
+func (m *Manager) SetLogger(logger *slog.Logger) {
+	m.logger = logger
 }
 
 func (m *Manager) BeginSession(ctx context.Context) (backend.SupportSession, error) {
@@ -411,7 +417,7 @@ func (m *Manager) RunService(ctx context.Context) error {
 }
 
 func (m *Manager) client() (backend.Client, error) {
-	return backend.NewClient(m.backendURL, nil)
+	return backend.NewClientWithLogger(m.backendURL, nil, m.logger)
 }
 
 func (m *Manager) sendHeartbeatForPIN(ctx context.Context, pin string) error {

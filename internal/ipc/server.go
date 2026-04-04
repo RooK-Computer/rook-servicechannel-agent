@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	rooklogging "rook-servicechannel-agent/internal/logging"
 	"rook-servicechannel-agent/internal/network"
 	agentruntime "rook-servicechannel-agent/internal/runtime"
 )
@@ -103,6 +104,13 @@ func (s *Server) handleClient(ctx context.Context, conn net.Conn) {
 			return
 		}
 
+		if rooklogging.DebugEnabled(s.logger) {
+			s.logger.Debug("ipc request received",
+				"client_id", client.id,
+				"message", rooklogging.JSONValue(request),
+			)
+		}
+
 		response, events := s.handleRequest(ctx, request)
 		client.outbound <- response
 		for _, event := range events {
@@ -114,6 +122,12 @@ func (s *Server) handleClient(ctx context.Context, conn net.Conn) {
 func (s *Server) writeLoop(client *client) {
 	encoder := json.NewEncoder(client.conn)
 	for message := range client.outbound {
+		if rooklogging.DebugEnabled(s.logger) {
+			s.logger.Debug("ipc outbound message",
+				"client_id", client.id,
+				"message", rooklogging.JSONValue(message),
+			)
+		}
 		if err := encoder.Encode(message); err != nil {
 			return
 		}
@@ -173,10 +187,14 @@ func (s *Server) handleRequest(ctx context.Context, request Request) (Response, 
 		if err := s.wifi.Connect(ctx, payload.SSID, payload.Password); err != nil {
 			return errorResponse(request, "connect_wifi_failed", err.Error()), []Event{errorEvent(err)}
 		}
-		s.manager.SyncWiFiState(agentruntime.BinaryStateConnected)
-		s.manager.SyncWiFiStatus(true, true, network.SupportConnectionName)
-		return successResponse(request, ConnectionStatePayload{State: string(agentruntime.BinaryStateConnected)}), []Event{
-			{Type: messageTypeEvent, Event: WiFiConnectionStateChangedEvent, Payload: ConnectionStatePayload{State: string(agentruntime.BinaryStateConnected)}},
+		status, err := s.wifi.Status(ctx)
+		if err != nil {
+			return errorResponse(request, "connect_wifi_failed", err.Error()), []Event{errorEvent(err)}
+		}
+		s.manager.SyncWiFiState(agentruntime.BinaryState(status.State))
+		s.manager.SyncWiFiStatus(status.AnyActive, status.SupportActive, status.ActiveConnectionName)
+		return successResponse(request, ConnectionStatePayload{State: string(status.State)}), []Event{
+			{Type: messageTypeEvent, Event: WiFiConnectionStateChangedEvent, Payload: ConnectionStatePayload{State: string(status.State)}},
 		}
 	case DisconnectWiFiAction:
 		if err := s.wifi.Disconnect(ctx); err != nil {

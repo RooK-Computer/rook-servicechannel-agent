@@ -41,11 +41,17 @@ func New(cfg config.Config, logger *slog.Logger, stdin io.Reader, stdout io.Writ
 		logger:         logger,
 		stdin:          stdin,
 		stdout:         stdout,
-		runtimeManager: agentruntime.New(cfg.BackendURL, cfg.StatePath),
+		runtimeManager: newRuntimeManager(cfg.BackendURL, cfg.StatePath, logger),
 		wifiManager:    network.NewWiFiManager(nil),
 		vpnManager:     network.NewVPNManager(nil),
 		cleaner:        nil,
 	}
+}
+
+func newRuntimeManager(backendURL, statePath string, logger *slog.Logger) *agentruntime.Manager {
+	manager := agentruntime.New(backendURL, statePath)
+	manager.SetLogger(logger)
+	return manager
 }
 
 func (a App) Run(ctx context.Context) error {
@@ -521,8 +527,13 @@ func (a *App) connectWiFi(ctx context.Context, ssid, password string) error {
 		return err
 	}
 
-	a.runtimeManager.SetWiFiState(agentruntime.BinaryStateConnected)
-	a.runtimeManager.SetWiFiStatus(true, true, network.SupportConnectionName)
+	status, err := a.wifiManager.Status(ctx)
+	if err != nil {
+		return err
+	}
+
+	a.runtimeManager.SetWiFiState(agentruntime.BinaryState(status.State))
+	a.runtimeManager.SetWiFiStatus(status.AnyActive, status.SupportActive, status.ActiveConnectionName)
 	fmt.Fprintf(a.stdout, "wifi connected: %s\n", ssid)
 	return nil
 }

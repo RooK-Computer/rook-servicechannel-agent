@@ -1,11 +1,14 @@
 package backend
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -160,5 +163,33 @@ func TestClientReturnsStructuredRequestError(t *testing.T) {
 
 	if requestErr.Code != "session_timeout" {
 		t.Fatalf("Code = %q, want session_timeout", requestErr.Code)
+	}
+}
+
+func TestClientDebugLoggingShowsRequestAndResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"session":{"status":"active","pin":"1234","ipAddress":"10.8.0.3"}}`))
+	}))
+	defer server.Close()
+
+	var logOutput bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	client, err := NewClientWithLogger(server.URL, server.Client(), logger)
+	if err != nil {
+		t.Fatalf("NewClientWithLogger() returned error: %v", err)
+	}
+
+	if _, err := client.GetSessionStatus(context.Background(), SessionStatusRequest{PIN: "1234"}); err != nil {
+		t.Fatalf("GetSessionStatus() returned error: %v", err)
+	}
+
+	logs := logOutput.String()
+	if !strings.Contains(logs, "backend request") || !strings.Contains(logs, "\\\"pin\\\":\\\"1234\\\"") {
+		t.Fatalf("logs = %q, want backend request with payload", logs)
+	}
+	if !strings.Contains(logs, "backend response") || !strings.Contains(logs, "\\\"status\\\":\\\"active\\\"") {
+		t.Fatalf("logs = %q, want backend response with payload", logs)
 	}
 }

@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+
+	rooklogging "rook-servicechannel-agent/internal/logging"
 )
 
 type HTTPClient interface {
@@ -19,9 +22,14 @@ type HTTPClient interface {
 type Client struct {
 	baseURL    *url.URL
 	httpClient HTTPClient
+	logger     *slog.Logger
 }
 
 func NewClient(baseURL string, httpClient HTTPClient) (Client, error) {
+	return NewClientWithLogger(baseURL, httpClient, nil)
+}
+
+func NewClientWithLogger(baseURL string, httpClient HTTPClient, logger *slog.Logger) (Client, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
@@ -38,6 +46,7 @@ func NewClient(baseURL string, httpClient HTTPClient) (Client, error) {
 	return Client{
 		baseURL:    parsedURL,
 		httpClient: httpClient,
+		logger:     logger,
 	}, nil
 }
 
@@ -135,8 +144,24 @@ func performJSON[Req any, Resp any](ctx context.Context, client Client, operatio
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("Accept", "application/json")
 
+	if rooklogging.DebugEnabled(client.logger) {
+		client.logger.Debug("backend request",
+			"operation", operation,
+			"method", http.MethodPost,
+			"url", httpRequest.URL.String(),
+			"body", rooklogging.JSONBytes(body),
+		)
+	}
+
 	httpResponse, err := client.httpClient.Do(httpRequest)
 	if err != nil {
+		if rooklogging.DebugEnabled(client.logger) {
+			client.logger.Debug("backend request failed",
+				"operation", operation,
+				"url", httpRequest.URL.String(),
+				"error", err,
+			)
+		}
 		return zero, &RequestError{
 			Operation: operation,
 			Cause:     err,
@@ -147,6 +172,15 @@ func performJSON[Req any, Resp any](ctx context.Context, client Client, operatio
 	responseBody, err := io.ReadAll(httpResponse.Body)
 	if err != nil {
 		return zero, fmt.Errorf("read %s response: %w", operation, err)
+	}
+
+	if rooklogging.DebugEnabled(client.logger) {
+		client.logger.Debug("backend response",
+			"operation", operation,
+			"status_code", httpResponse.StatusCode,
+			"url", httpRequest.URL.String(),
+			"body", rooklogging.JSONBytes(responseBody),
+		)
 	}
 
 	if httpResponse.StatusCode != http.StatusOK {

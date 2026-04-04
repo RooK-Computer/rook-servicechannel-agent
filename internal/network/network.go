@@ -5,17 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 )
 
 const (
-	SupportConnectionName = "rook-support-wifi"
-	OpenVPNServiceName    = "rook-openvpn-client.service"
-	OpenVPNInterfaceName  = "rookvpn"
-	OpenVPNStatusFilePath = "/var/log/rook-openvpn/client-status.log"
+	SupportConnectionName  = "rook-support-wifi"
+	OpenVPNServiceName     = "rook-openvpn-client.service"
+	OpenVPNInterfaceName   = "rookvpn"
+	OpenVPNStatusFilePath  = "/var/log/rook-openvpn/client-status.log"
+	connectionWaitTimeout  = 30 * time.Second
+	connectionPollInterval = 500 * time.Millisecond
 )
 
 type ConnectionState string
@@ -111,7 +115,36 @@ func (m *WiFiManager) Connect(ctx context.Context, ssid, password string) error 
 	}
 
 	_, err := m.runner.Run(ctx, "nmcli", "dev", "wifi", "connect", ssid, "password", password, "name", SupportConnectionName)
-	return err
+	if err != nil {
+		return err
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, connectionWaitTimeout)
+	defer cancel()
+
+	if err := waitForCondition(waitCtx, connectionPollInterval, func(checkCtx context.Context) (bool, error) {
+		status, err := m.Status(checkCtx)
+		if err != nil {
+			return false, err
+		}
+		if !status.SupportActive {
+			return false, nil
+		}
+
+		ipAddress, err := m.supportIPAddress(checkCtx)
+		if err != nil {
+			if isMissingConnection(err) {
+				return false, nil
+			}
+			return false, err
+		}
+
+		return ipAddress != "", nil
+	}); err != nil {
+		return fmt.Errorf("wait for wifi IPv4 address: %w", err)
+	}
+
+	return nil
 }
 
 func (m *WiFiManager) Disconnect(ctx context.Context) error {
@@ -156,6 +189,14 @@ func (m *WiFiManager) Status(ctx context.Context) (WiFiStatus, error) {
 	return status, nil
 }
 
+func (m *WiFiManager) supportIPAddress(ctx context.Context) (string, error) {
+	output, err := m.runner.Run(ctx, "nmcli", "--terse", "--fields", "IP4.ADDRESS", "connection", "show", "--active", SupportConnectionName)
+	if err != nil {
+		return "", err
+	}
+	return extractIPv4(output), nil
+}
+
 type VPNManager struct {
 	runner   Runner
 	readFile func(string) ([]byte, error)
@@ -174,7 +215,24 @@ func NewVPNManager(runner Runner) *VPNManager {
 
 func (m *VPNManager) Start(ctx context.Context) error {
 	_, err := m.runner.Run(ctx, "systemctl", "start", OpenVPNServiceName)
-	return err
+	if err != nil {
+		return err
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, connectionWaitTimeout)
+	defer cancel()
+
+	if err := waitForCondition(waitCtx, connectionPollInterval, func(checkCtx context.Context) (bool, error) {
+		status, err := m.Status(checkCtx)
+		if err != nil {
+			return false, err
+		}
+		return status.State == StateConnected && status.IPAddress != "", nil
+	}); err != nil {
+		return fmt.Errorf("wait for vpn IPv4 address: %w", err)
+	}
+
+	return nil
 }
 
 func (m *VPNManager) Stop(ctx context.Context) error {
@@ -195,7 +253,7 @@ func (m *VPNManager) Status(ctx context.Context) (VPNStatus, error) {
 	ipOutput, err := m.runner.Run(ctx, "ip", "-o", "-4", "addr", "show", "dev", OpenVPNInterfaceName)
 	if err == nil {
 		status.InterfacePresent = true
-		status.IPAddress = parseInterfaceIPv4(ipOutput)
+		status.IPAddress = extractIPv4(ipOutput)
 	} else if !isMissingInterface(err) {
 		return VPNStatus{}, err
 	}
@@ -250,13 +308,53 @@ func (c *Cleaner) Cleanup(ctx context.Context) error {
 }
 
 func parseInterfaceIPv4(output string) string {
-	fields := strings.Fields(output)
-	for i, field := range fields {
-		if field == "inet" && i+1 < len(fields) {
-			return strings.Split(fields[i+1], "/")[0]
+	for _, field := range strings.FieldsFunc(output, func(r rune) bool {
+		switch r {
+		case ' ', '\t', '\n', '\r', ':', '=', '/':
+			return true
+		default:
+			return false
 		}
+	}) {
+		ip := net.ParseIP(strings.TrimSpace(field))
+		if ip == nil || ip.To4() == nil {
+			continue
+		}
+		return ip.String()
 	}
 	return ""
+}
+
+func extractIPv4(output string) string {
+	return parseInterfaceIPv4(output)
+}
+
+func waitForCondition(ctx context.Context, interval time.Duration, check func(context.Context) (bool, error)) error {
+	ready, err := check(ctx)
+	if err != nil {
+		return err
+	}
+	if ready {
+		return nil
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			ready, err := check(ctx)
+			if err != nil {
+				return err
+			}
+			if ready {
+				return nil
+			}
+		}
+	}
 }
 
 func parseNMCLIConnection(line string) (string, string, bool) {

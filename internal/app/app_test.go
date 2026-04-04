@@ -547,14 +547,15 @@ func waitForSocket(t *testing.T, socketPath string) net.Conn {
 func TestRunNetworkCommands(t *testing.T) {
 	runner := fakeRunner{
 		outputs: map[string]string{
-			"nmcli --terse --fields SSID dev wifi list --rescan yes":             "Cafe\nOffice\n",
-			"nmcli connection delete rook-support-wifi":                          "",
-			"nmcli dev wifi connect Cafe password secret name rook-support-wifi": "",
-			"nmcli --terse --fields NAME,TYPE connection show --active":          "rook-support-wifi:802-11-wireless\n",
-			"systemctl is-active rook-openvpn-client.service":                    "active\n",
-			"ip -o -4 addr show dev rookvpn":                                     "7: rookvpn    inet 10.8.0.2/24 scope global rookvpn\n",
-			"systemctl start rook-openvpn-client.service":                        "",
-			"systemctl stop rook-openvpn-client.service":                         "",
+			"nmcli --terse --fields SSID dev wifi list --rescan yes":                        "Cafe\nOffice\n",
+			"nmcli connection delete rook-support-wifi":                                     "",
+			"nmcli dev wifi connect Cafe password secret name rook-support-wifi":            "",
+			"nmcli --terse --fields NAME,TYPE connection show --active":                     "rook-support-wifi:802-11-wireless\n",
+			"nmcli --terse --fields IP4.ADDRESS connection show --active rook-support-wifi": "10.0.0.5/24\n",
+			"systemctl is-active rook-openvpn-client.service":                               "active\n",
+			"ip -o -4 addr show dev rookvpn":                                                "7: rookvpn    inet 10.8.0.2/24 scope global rookvpn\n",
+			"systemctl start rook-openvpn-client.service":                                   "",
+			"systemctl stop rook-openvpn-client.service":                                    "",
 		},
 	}
 

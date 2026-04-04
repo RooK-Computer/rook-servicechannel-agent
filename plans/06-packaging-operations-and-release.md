@@ -50,6 +50,7 @@ Implemented artifacts:
 - `make package` as the packaging entrypoint,
 - README updates for packaged installation, configuration, diagnostics, and service-backed interactive usage.
 - shared spec updates that document `/etc/default/rook-agent` as the packaged agent configuration file and explain all shipped parameters.
+- debug-level observability now includes inbound IPC messages plus outbound IPC/backend result payloads, with obvious secret fields redacted before they reach operator logs.
 
 Implementation choices in this phase:
 
@@ -77,6 +78,7 @@ The resulting state after this phase:
 - the agent can be built into an installable Debian package,
 - the package ships the binary, service unit, and packaged environment file,
 - operators have a documented way to configure backend URL, inspect logs, and start the service,
+- `ROOK_AGENT_LOG_LEVEL=debug` now exposes request/response-level activity for service troubleshooting without writing WiFi passwords in cleartext,
 - release gates and conservative upgrade expectations are now explicit in repository documentation.
 
 ## Release Checklist

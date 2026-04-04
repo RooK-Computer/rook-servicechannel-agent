@@ -10,6 +10,7 @@ import (
 type fakeRunner struct {
 	outputs map[string]string
 	errors  map[string]error
+	series  map[string][]string
 	calls   []string
 }
 
@@ -18,6 +19,11 @@ func (r *fakeRunner) Run(_ context.Context, name string, args ...string) (string
 	r.calls = append(r.calls, call)
 	if err, ok := r.errors[call]; ok {
 		return "", err
+	}
+	if values, ok := r.series[call]; ok && len(values) > 0 {
+		next := values[0]
+		r.series[call] = values[1:]
+		return next, nil
 	}
 	return r.outputs[call], nil
 }
@@ -53,7 +59,9 @@ func TestWiFiScanParsesNetworks(t *testing.T) {
 func TestWiFiConnectReconnectsSupportProfile(t *testing.T) {
 	runner := &fakeRunner{
 		outputs: map[string]string{
-			"nmcli dev wifi connect Test password secret name rook-support-wifi": "",
+			"nmcli dev wifi connect Test password secret name rook-support-wifi":            "",
+			"nmcli --terse --fields NAME,TYPE connection show --active":                     "rook-support-wifi:802-11-wireless\n",
+			"nmcli --terse --fields IP4.ADDRESS connection show --active rook-support-wifi": "10.0.0.5/24\n",
 		},
 		errors: map[string]error{
 			"nmcli connection delete rook-support-wifi": errors.New("unknown connection"),
@@ -64,8 +72,43 @@ func TestWiFiConnectReconnectsSupportProfile(t *testing.T) {
 		t.Fatalf("Connect() returned error: %v", err)
 	}
 
-	if len(runner.calls) != 2 {
-		t.Fatalf("len(calls) = %d, want 2", len(runner.calls))
+	if len(runner.calls) != 4 {
+		t.Fatalf("len(calls) = %d, want 4", len(runner.calls))
+	}
+}
+
+func TestWiFiConnectWaitsForIPv4Address(t *testing.T) {
+	runner := &fakeRunner{
+		outputs: map[string]string{
+			"nmcli dev wifi connect Test password secret name rook-support-wifi": "",
+		},
+		series: map[string][]string{
+			"nmcli --terse --fields NAME,TYPE connection show --active": {
+				"rook-support-wifi:802-11-wireless\n",
+				"rook-support-wifi:802-11-wireless\n",
+			},
+			"nmcli --terse --fields IP4.ADDRESS connection show --active rook-support-wifi": {
+				"\n",
+				"10.0.0.5/24\n",
+			},
+		},
+		errors: map[string]error{
+			"nmcli connection delete rook-support-wifi": errors.New("unknown connection"),
+		},
+	}
+
+	if err := NewWiFiManager(runner).Connect(context.Background(), "Test", "secret"); err != nil {
+		t.Fatalf("Connect() returned error: %v", err)
+	}
+
+	ipChecks := 0
+	for _, call := range runner.calls {
+		if call == "nmcli --terse --fields IP4.ADDRESS connection show --active rook-support-wifi" {
+			ipChecks++
+		}
+	}
+	if ipChecks < 2 {
+		t.Fatalf("ip address checks = %d, want at least 2", ipChecks)
 	}
 }
 
@@ -172,6 +215,44 @@ func TestVPNStatusUsesServiceInterfaceAndStatusFile(t *testing.T) {
 
 	if status.IPAddress != "10.8.0.2" {
 		t.Fatalf("IPAddress = %q, want 10.8.0.2", status.IPAddress)
+	}
+}
+
+func TestVPNStartWaitsForIPv4Address(t *testing.T) {
+	runner := &fakeRunner{
+		outputs: map[string]string{
+			"systemctl start rook-openvpn-client.service": "",
+		},
+		series: map[string][]string{
+			"systemctl is-active rook-openvpn-client.service": {
+				"active\n",
+				"active\n",
+			},
+			"ip -o -4 addr show dev rookvpn": {
+				"",
+				"7: rookvpn    inet 10.8.0.2/24 scope global rookvpn\n",
+			},
+		},
+		errors: map[string]error{},
+	}
+
+	manager := NewVPNManager(runner)
+	manager.readFile = func(string) ([]byte, error) {
+		return nil, os.ErrNotExist
+	}
+
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatalf("Start() returned error: %v", err)
+	}
+
+	ipChecks := 0
+	for _, call := range runner.calls {
+		if call == "ip -o -4 addr show dev rookvpn" {
+			ipChecks++
+		}
+	}
+	if ipChecks < 2 {
+		t.Fatalf("ip address checks = %d, want at least 2", ipChecks)
 	}
 }
 
