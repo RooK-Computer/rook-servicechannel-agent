@@ -99,3 +99,4 @@ Confirmed outcome from the review:
 - the local IPC layer is accepted as the new UI integration baseline,
 - the next active implementation phase is Plan 05 for WLAN, OpenVPN, and cleanup,
 - the existing IPC contract should now be extended rather than replaced.
+- a later spec clarification aligned the non-normative message and event catalog with the already implemented `ScanWifi` contract: empty request payload, `WiFiScanPayload` response, and matching `WifiScanCompleted` event payload.
