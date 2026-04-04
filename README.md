@@ -110,6 +110,7 @@ Service-oriented execution:
 In service mode, the agent resumes a locally persisted active session, continues heartbeats in the background, and attempts to end the session cleanly during graceful shutdown.
 
 Service mode also starts the local Unix domain socket IPC server for a later console UI.
+The packaged default keeps the socket directory traversable for local non-root clients and sets the socket node itself world-writable so separate local applications can connect to the root-run agent.
 
 Primary mode:
 
@@ -257,6 +258,10 @@ Useful packaged-operation commands:
 - `rook-agent config`
 - `rook-agent wifistatus`
 - `rook-agent vpnstatus`
+- `ls -l /run/rook-agent/agent.sock`
+- `nmcli --terse --fields NAME,TYPE connection show --active`
+
+For WiFi debugging on target systems, pay close attention to the `TYPE` column from `nmcli connection show --active`. NetworkManager commonly reports active WLAN connections as `802-11-wireless`, not `wifi`.
 
 First-line operator checks:
 

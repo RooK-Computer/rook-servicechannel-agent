@@ -56,6 +56,7 @@ Implementation choices in this phase:
 
 - the temporary WiFi connection is managed under the fixed NetworkManager profile name `rook-support-wifi`,
 - WLAN status observation now distinguishes between "any WiFi connection is active" and "the RooK support WiFi profile is active",
+- WLAN status detection accepts both the legacy `wifi` label and NetworkManager's `802-11-wireless` connection type when reading active connections via `nmcli`,
 - VPN connectivity is considered effectively connected only when the service is active and the `rookvpn` interface has an IPv4 address,
 - reboot recovery clears locally persisted support-session state when the stored boot ID no longer matches the running system,
 - service-mode startup performs cleanup only when no active session is being resumed or when reboot recovery has invalidated stale state.

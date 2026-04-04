@@ -72,7 +72,7 @@ func TestWiFiConnectReconnectsSupportProfile(t *testing.T) {
 func TestWiFiStatusDetectsActiveSupportProfile(t *testing.T) {
 	runner := &fakeRunner{
 		outputs: map[string]string{
-			"nmcli --terse --fields NAME,TYPE connection show --active": "rook-support-wifi:wifi\n",
+			"nmcli --terse --fields NAME,TYPE connection show --active": "rook-support-wifi:802-11-wireless\n",
 		},
 	}
 
@@ -101,7 +101,7 @@ func TestWiFiStatusDetectsActiveSupportProfile(t *testing.T) {
 func TestWiFiStatusDetectsForeignActiveWiFi(t *testing.T) {
 	runner := &fakeRunner{
 		outputs: map[string]string{
-			"nmcli --terse --fields NAME,TYPE connection show --active": "HomeNetwork:wifi\nbridge0:bridge\n",
+			"nmcli --terse --fields NAME,TYPE connection show --active": "HomeNetwork:802-11-wireless\nbridge0:bridge\n",
 		},
 	}
 
@@ -124,6 +124,27 @@ func TestWiFiStatusDetectsForeignActiveWiFi(t *testing.T) {
 
 	if status.ActiveConnectionName != "HomeNetwork" {
 		t.Fatalf("ActiveConnectionName = %q, want HomeNetwork", status.ActiveConnectionName)
+	}
+}
+
+func TestWiFiStatusUnescapesConnectionNames(t *testing.T) {
+	runner := &fakeRunner{
+		outputs: map[string]string{
+			"nmcli --terse --fields NAME,TYPE connection show --active": "Office\\:Guest:802-11-wireless\n",
+		},
+	}
+
+	status, err := NewWiFiManager(runner).Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() returned error: %v", err)
+	}
+
+	if !status.AnyActive {
+		t.Fatal("AnyActive = false, want true")
+	}
+
+	if status.ActiveConnectionName != "Office:Guest" {
+		t.Fatalf("ActiveConnectionName = %q, want Office:Guest", status.ActiveConnectionName)
 	}
 }
 

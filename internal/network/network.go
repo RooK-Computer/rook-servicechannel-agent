@@ -137,17 +137,17 @@ func (m *WiFiManager) Status(ctx context.Context) (WiFiStatus, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.Split(line, ":")
-		if len(parts) < 2 || parts[1] != "wifi" {
+		name, connectionType, ok := parseNMCLIConnection(line)
+		if !ok || !isWiFiConnectionType(connectionType) {
 			continue
 		}
 
 		status.AnyActive = true
 		if status.ActiveConnectionName == "" {
-			status.ActiveConnectionName = parts[0]
+			status.ActiveConnectionName = name
 		}
 
-		if parts[0] == SupportConnectionName {
+		if name == SupportConnectionName {
 			status.SupportActive = true
 			status.State = StateConnected
 		}
@@ -257,6 +257,43 @@ func parseInterfaceIPv4(output string) string {
 		}
 	}
 	return ""
+}
+
+func parseNMCLIConnection(line string) (string, string, bool) {
+	split := -1
+	escaped := false
+	for i := len(line) - 1; i >= 0; i-- {
+		switch {
+		case escaped:
+			escaped = false
+		case line[i] == '\\':
+			escaped = true
+		case line[i] == ':':
+			split = i
+			i = -1
+		}
+	}
+
+	if split <= 0 || split >= len(line)-1 {
+		return "", "", false
+	}
+
+	name := strings.TrimSpace(strings.ReplaceAll(line[:split], `\:`, `:`))
+	connectionType := strings.TrimSpace(strings.ReplaceAll(line[split+1:], `\:`, `:`))
+	if name == "" || connectionType == "" {
+		return "", "", false
+	}
+
+	return name, connectionType, true
+}
+
+func isWiFiConnectionType(connectionType string) bool {
+	switch connectionType {
+	case "wifi", "802-11-wireless", "wireless":
+		return true
+	default:
+		return false
+	}
 }
 
 func isMissingConnection(err error) bool {

@@ -54,7 +54,7 @@ Implementation choices in this phase:
 - packaged UI integrations resolve the socket path from the shared agent environment file `/etc/default/rook-agent` instead of probing for candidate paths,
 - supported request actions in this first contract slice are `GetStatus`, `StartSupport`, `StopSupport`, and `GetPin`,
 - asynchronous events currently include `SupportStateChanged`, `PinAssigned`, and `ErrorRaised`,
-- socket directories are created with `0700` permissions and the socket node itself is restricted to `0600`.
+- socket directories created by the agent use `0755` permissions and the socket node itself is set to `0666` so non-root local clients can reach the root-run agent over IPC.
 
 ## Verification
 

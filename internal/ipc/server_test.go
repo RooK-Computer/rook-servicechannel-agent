@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -36,7 +37,7 @@ func newFakeNetworkAdapters() (*network.WiFiManager, *network.VPNManager) {
 		outputs: map[string]string{
 			"nmcli --terse --fields SSID dev wifi list --rescan yes":             "Cafe\nOffice\n",
 			"nmcli connection delete rook-support-wifi":                          "",
-			"nmcli --terse --fields NAME,TYPE connection show --active":          "HomeNetwork:wifi\n",
+			"nmcli --terse --fields NAME,TYPE connection show --active":          "HomeNetwork:802-11-wireless\n",
 			"nmcli dev wifi connect Cafe password secret name rook-support-wifi": "",
 			"systemctl is-active rook-openvpn-client.service":                    "inactive\n",
 		},
@@ -45,6 +46,44 @@ func newFakeNetworkAdapters() (*network.WiFiManager, *network.VPNManager) {
 		},
 	}
 	return network.NewWiFiManager(runner), network.NewVPNManager(runner)
+}
+
+func TestServerCreatesWorldWritableSocket(t *testing.T) {
+	socketDir := filepath.Join(t.TempDir(), "runtime")
+	socketPath := filepath.Join(socketDir, "agent.sock")
+	manager := agentruntime.New("https://backend.example.test", filepath.Join(t.TempDir(), "session.json"))
+	wifiManager, vpnManager := newFakeNetworkAdapters()
+	ipcServer := NewServer(socketPath, slog.New(slog.DiscardHandler), manager, wifiManager, vpnManager)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ipcServer.Run(ctx)
+	}()
+
+	conn := waitForSocket(t, socketPath)
+	_ = conn.Close()
+
+	socketInfo, err := os.Stat(socketPath)
+	if err != nil {
+		t.Fatalf("Stat(socket) returned error: %v", err)
+	}
+	if got := socketInfo.Mode().Perm(); got != 0o666 {
+		t.Fatalf("socket mode = %o, want 666", got)
+	}
+
+	dirInfo, err := os.Stat(socketDir)
+	if err != nil {
+		t.Fatalf("Stat(socket dir) returned error: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o755 {
+		t.Fatalf("socket dir mode = %o, want 755", got)
+	}
+
+	cancel()
+	if err := <-errCh; err != nil {
+		t.Fatalf("Run() returned error: %v", err)
+	}
 }
 
 func TestServerStartSupportBroadcastsEvents(t *testing.T) {

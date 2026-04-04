@@ -225,12 +225,12 @@ func TestRunWiFiStatusReportsForeignAndSupportConnections(t *testing.T) {
 		return output.String()
 	}
 
-	foreignOutput := runCommand("HomeNetwork:wifi\n")
+	foreignOutput := runCommand("HomeNetwork:802-11-wireless\n")
 	if !strings.Contains(foreignOutput, "wifi_active=true") || !strings.Contains(foreignOutput, "support_wifi_active=false") || !strings.Contains(foreignOutput, "active_connection=HomeNetwork") {
 		t.Fatalf("foreign output = %q, want active foreign wifi status", foreignOutput)
 	}
 
-	supportOutput := runCommand("rook-support-wifi:wifi\n")
+	supportOutput := runCommand("rook-support-wifi:802-11-wireless\n")
 	if !strings.Contains(supportOutput, "wifi_active=true") || !strings.Contains(supportOutput, "support_wifi_active=true") || !strings.Contains(supportOutput, "active_connection=rook-support-wifi") {
 		t.Fatalf("support output = %q, want active support wifi status", supportOutput)
 	}
@@ -550,7 +550,7 @@ func TestRunNetworkCommands(t *testing.T) {
 			"nmcli --terse --fields SSID dev wifi list --rescan yes":             "Cafe\nOffice\n",
 			"nmcli connection delete rook-support-wifi":                          "",
 			"nmcli dev wifi connect Cafe password secret name rook-support-wifi": "",
-			"nmcli --terse --fields NAME,TYPE connection show --active":          "rook-support-wifi:wifi\n",
+			"nmcli --terse --fields NAME,TYPE connection show --active":          "rook-support-wifi:802-11-wireless\n",
 			"systemctl is-active rook-openvpn-client.service":                    "active\n",
 			"ip -o -4 addr show dev rookvpn":                                     "7: rookvpn    inet 10.8.0.2/24 scope global rookvpn\n",
 			"systemctl start rook-openvpn-client.service":                        "",

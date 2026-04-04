@@ -46,7 +46,7 @@ func NewServer(socketPath string, logger *slog.Logger, manager *agentruntime.Man
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	if err := os.MkdirAll(filepath.Dir(s.socketPath), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.socketPath), 0o755); err != nil {
 		return fmt.Errorf("create socket directory: %w", err)
 	}
 
@@ -61,7 +61,7 @@ func (s *Server) Run(ctx context.Context) error {
 	defer listener.Close()
 	defer os.Remove(s.socketPath)
 
-	if err := os.Chmod(s.socketPath, 0o600); err != nil {
+	if err := os.Chmod(s.socketPath, 0o666); err != nil {
 		return fmt.Errorf("chmod socket: %w", err)
 	}
 
