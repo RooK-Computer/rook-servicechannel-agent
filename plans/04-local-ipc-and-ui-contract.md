@@ -43,6 +43,7 @@ Implemented artifacts:
 
 - local Unix domain socket server in `internal/ipc/server.go`,
 - JSON contract types for requests, responses, and asynchronous events in `internal/ipc/contract.go`,
+- aligned OpenAPI message contract in `spec/openapi/01-ui-agent-local-ipc.openapi.yaml`,
 - service-mode integration so the IPC server starts alongside the runtime core,
 - runtime snapshot access and event subscription support so IPC stays attached to the existing state owner,
 - tests for start/stop event sequencing and reconnect-friendly status retrieval.
