@@ -171,8 +171,11 @@ The current IPC surface is available in service mode over a Unix domain socket.
 Defaults:
 
 - socket path: `ROOK_AGENT_SOCKET_PATH` or the configured default under the user config directory
-- transport: Unix domain socket
+- transport: Unix domain socket using `AF_UNIX` / `SOCK_STREAM`
 - message format: streamed JSON request/response plus asynchronous event messages
+- framing: one top-level JSON object per line, delimited by `\n`
+
+All requests, responses, and asynchronous events share the same bidirectional stream connection. EOF closes the connection; it is not the message terminator.
 
 For packaged UI integrations, the supported way to discover the socket is:
 

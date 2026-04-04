@@ -51,6 +51,7 @@ Implemented artifacts:
 Implementation choices in this phase:
 
 - the socket transport uses a single long-lived Unix socket connection per client with JSON messages streamed over the same connection,
+- the concrete transport semantics are `AF_UNIX` / `SOCK_STREAM` with one JSON object per line, using newline as the message delimiter rather than EOF or packet boundaries,
 - packaged UI integrations resolve the socket path from the shared agent environment file `/etc/default/rook-agent` instead of probing for candidate paths,
 - supported request actions in this first contract slice are `GetStatus`, `StartSupport`, `StopSupport`, and `GetPin`,
 - asynchronous events currently include `SupportStateChanged`, `PinAssigned`, and `ErrorRaised`,
